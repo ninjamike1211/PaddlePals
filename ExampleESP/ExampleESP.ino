@@ -44,6 +44,8 @@ int valueFromPhone = 0;
 String pointsString = "";
 String newSwingString = "";
 String maxSwingString = "";
+String allTimePointsString = "";
+String avgPointsPerGameString = "";
 bool messageFinishedSending = false;
 
 
@@ -95,13 +97,65 @@ void loop() {
       pointsString = "Current Number Of Points By This Player: " + String(pointsThisGame);
       newSwingString = "Newest Swing Speed: " + String(randSwingSpeed);
       maxSwingString = "Max Swing Speed: " + String(currentMax);
+
+      // Send some test strings for Total Points All Time and Average Points Per Game
+      totalPointsAllTime = calculateTotalPointsAllTime(50);
+      allTimePointsString = "Example All Time Points: " + String(totalPointsAllTime);
+
+      float averagePPG = calculateAveragePointsPerGame(20, totalPointsAllTime);
+      avgPointsPerGameString = "Example Average PPG: " + String(averagePPG);
+
       
       SerialBT.println(pointsString);
       SerialBT.println(newSwingString);
       SerialBT.println(maxSwingString);
+      SerialBT.println(allTimePointsString);
+      SerialBT.println(avgPointsPerGameString);
   }
 
   // Check for received messages from phone
+  if (SerialBT.available()) {
+    Serial.write(SerialBT.read());
+  }
+
+  // Delay for a little bit to avoid overlap - 20 ms
+  delay(20);
+}
+
+
+// Functions for algorithms and operations
+// Some examples here
+
+void incrementPoints() {
+  pointsThisGame++;
+}
+
+int checkMaxSwingSpeed(int swingSpeed) {
+  if (swingSpeed > currentMaxSwingSpeed) {
+    currentMaxSwingSpeed = swingSpeed;
+  }
+  return currentMaxSwingSpeed;
+}
+
+int calculateTotalPointsAllTime(int pastNumberOfPoints) {
+    pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
+    return pastNumberOfPoints;
+}
+
+bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
+    if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
+        return true;
+    }
+    return false;
+}
+
+float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
+  float averagePoints = totalNumberOfPoints / numberOfGames;
+  return averagePoints;
+}
+
+/* Old Code for reading data in from phone
+// Check for received messages from phone
   if (SerialBT.available()) {
     // Get incoming chars and append to string
     char charFromPhone = SerialBT.read();
@@ -156,41 +210,9 @@ void loop() {
 
       // Mark message finished sending as false
       messageFinishedSending = false;
-  }
-}
+  }*/
 
-
-// Functions for algorithms and operations
-
-void incrementPoints() {
-  pointsThisGame++;
-}
-
-int checkMaxSwingSpeed(int swingSpeed) {
-  if (swingSpeed > currentMaxSwingSpeed) {
-    currentMaxSwingSpeed = swingSpeed;
-  }
-  return currentMaxSwingSpeed;
-}
-
-int calculateTotalPointsAllTime(int pastNumberOfPoints) {
-    pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
-    return pastNumberOfPoints;
-}
-
-bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
-    if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
-        return true;
-    }
-    return false;
-}
-
-float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
-  float averagePoints = totalNumberOfPoints / numberOfGames;
-  return averagePoints;
-}
-
-void parseStringForValues(char charBufferMessage[]) {
+/* void parseStringForValues(char charBufferMessage[]) {
   // Split string into parts
 
   // Create char pointer for strtok() to use as index
@@ -211,4 +233,4 @@ void parseStringForValues(char charBufferMessage[]) {
   // Convert string to int and copy it
   valueFromPhone = atoi(strtokIndx);
 
-}
+}*/
