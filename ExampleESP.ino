@@ -10,7 +10,7 @@
 
 #include "BluetoothSerial.h"
 
-String device_name = "ESP32-BT"
+String device_name = "ESP32-BT";
 
 // Check if Bluetooth is available
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -38,6 +38,8 @@ const long interval = 5000;
 // String variables for sent and received messages
 String entireMessageFromPhone = "";
 String variableFromPhone = "";
+char variableFromPhoneArr[50] = {0};
+
 int valueFromPhone = 0;
 String pointsString = "";
 String newSwingString = "";
@@ -75,10 +77,10 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
       previousMillis = currentMillis;
       // Generate random swing speed value
-      randSwingSpeed = random(0, 50);
+      int randSwingSpeed = random(0, 50);
 
       // Generate value from 0 to 100 for probability
-      randProbability = random(0, 100);
+      int randProbability = random(0, 100);
 
       // If value >= 50, increment, otherwise, don't
       // Basically 50/50 probability every 5 seconds if score is updated
@@ -87,7 +89,7 @@ void loop() {
       }
 
       // Check the max swing speed
-      currentMax = checkMaxSwingSpeed(randSwingSpeed);
+      int currentMax = checkMaxSwingSpeed(randSwingSpeed);
 
       // Send stats over in string format
       pointsString = "Current Number Of Points By This Player: " + String(pointsThisGame);
@@ -105,7 +107,7 @@ void loop() {
     char charFromPhone = SerialBT.read();
 
     // Keep reading in chars into message unless new line is hit, in which case, clear the message
-    if (incomingChar != '\n') {
+    if (charFromPhone != '\n') {
       entireMessageFromPhone += String(charFromPhone);
     }
     else {
@@ -115,9 +117,9 @@ void loop() {
       // Indicate that the message finished sending
       messageFinishedSending = true;
     }
-    
+
     // Write the chars to serial
-    Serial.write(incomingChar);
+    Serial.write(charFromPhone);
   }
 
   if (messageFinishedSending) {
@@ -188,7 +190,7 @@ float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) 
   return averagePoints;
 }
 
-void parseStringForValues(char[] charBufferMessage) {
+void parseStringForValues(char charBufferMessage[]) {
   // Split string into parts
 
   // Create char pointer for strtok() to use as index
@@ -197,8 +199,11 @@ void parseStringForValues(char[] charBufferMessage) {
   // Get the string portion of the message
   strtokIndx = strtok(charBufferMessage, ",");
   
-  // Copy it to variable from phone
-  strcpy(variableFromPhone, strtokIndx);
+  // Copy it to variable from phone array
+  strcpy(variableFromPhoneArr, strtokIndx);
+
+  // Turn variableFromPhoneArr into string and store
+  variableFromPhone = String(variableFromPhoneArr);
 
   // Get the int part of the message
   strtokIndx = strtok(NULL, ",");
