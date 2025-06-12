@@ -40,13 +40,25 @@ try:
 
     conn.commit()
 
-    # for user in range(0,4):
+    for user in range(0,4):
+        cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user} OR loser_id={user}')
+        gamesPlayed = cursor.fetchone()[0]
+
+        cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user}')
+        gamesWon = cursor.fetchone()[0]
+
+        cursor.execute(f'SELECT AVG(CASE WHEN winner_id={user} THEN winner_points ELSE loser_points END) FROM games WHERE winner_id={user} OR loser_id={user}')
+        averageScore = cursor.fetchone()[0]
+
+        cursor.execute(f'UPDATE users SET gamesPlayed={gamesPlayed}, gamesWon={gamesWon}, averageScore={averageScore} WHERE user_id={user}')
+
+    conn.commit()
 
 
     cursor.close()
 
-except:
-    print("Error!")
+except sqlite3.Error as error:
+    print('Error occurred - ', error)
 
 finally:
     if conn:
