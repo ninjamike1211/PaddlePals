@@ -6,7 +6,7 @@ import sqlite3
 
 try:
 
-    conn = sqlite3.connect('pickleDatabase.db')
+    conn = sqlite3.connect('pickle.db')
     cursor = conn.cursor()
 
     while True:
