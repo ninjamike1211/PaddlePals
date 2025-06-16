@@ -1,7 +1,7 @@
 import sqlite3
 from dataclasses import dataclass
 
-class WebServer:
+class restAPI:
 
     @dataclass
     class APIRequest:
@@ -43,33 +43,28 @@ class WebServer:
             raise self.ValidationError(val, 'float')
 
 
-    def decode_request(self, request:str):
-        request_parts = request.split(' ')
-
-        if len(request_parts) < 2:
-            print(f'Invalid request, insufficient data provided: {request}')
-            return False
-
-        request_type = request_parts[0]
+    def decode_request(self, request_type, request:str):
+        request_parts = request.split('?')
 
         if request_type not in ('GET', 'PUT', 'POST', 'DELETE'):
             print(f'Invalid request type: {request_type}')
             return False
         
-        uri_parts = request_parts[1].split('/', 1)
+        uri_parts = request_parts[0][1:].split('/', 1)
         if len(uri_parts) != 2 or uri_parts[0] != 'pickle':
-            print(f'Invalid URI: {request_parts[1]}')
+            print(f'Invalid URI: {uri}')
             return False
         endpoint = uri_parts[1].replace('/', '_')
         
         params = {}
-        for part in request_parts[2:]:
-            param = part.split('=')
-            if len(param) != 2:
-                print(f'Invalid parameter: {part}')
-                return False
+        if len(request_parts) > 1:
+            for part in request_parts[1:]:
+                param = part.split('=')
+                if len(param) != 2:
+                    print(f'Invalid parameter: {part}')
+                    return False
 
-            params[param[0]] = param[1]
+                params[param[0]] = param[1]
 
         return self.APIRequest(request_type, endpoint, params)
             
@@ -85,8 +80,8 @@ class WebServer:
             return False
         
             
-    def handle_request(self, requestStr:str):
-        request = self.decode_request(requestStr)
+    def handle_request(self, request_type:str, requestStr:str):
+        request = self.decode_request(request_type, requestStr)
         if not(request):
             return False
         
@@ -274,15 +269,16 @@ class WebServer:
 
 try:
 
-    server = WebServer()
+    server = restAPI()
 
     while True:
 
-        query = input('Enter an API command: ')
-        if query == 'exit':
+        request_type = input('Enter request type: ')
+        if request_type == 'exit':
             break
 
-        result = server.handle_request(query)
+        request = input('Enter an API endpoint URI: ')
+        result = server.handle_request(request_type, request)
         
         print(f'Result: {result}\n')
 
