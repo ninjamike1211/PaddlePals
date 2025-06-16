@@ -2,53 +2,83 @@
 
 The PickleConnect database system is based on a RESTful API, which allows the android app to query the database over a network connection using standard HTTP requests. Below is a list of endpoints.
 
-## Endpoints:
+# Endpoints:
+
+## **pickle/apiToken**
 - `GET pickle/apiToken`
-    **params**: username, password
+    ---
     Authenticates using a username and password, returns an API token for accessing user account data.
 
+    **params**:
+    - `username`: account username
+    - `password`: account password
+    
+
+## pickle/user
 - `GET pickle/user`
+    ---
+    Retrieves data about a specific user, specifically notated by user_id. By default, all accessible user data will be returned, but the `objects` parameter can be used to query for specific values.
+
+    **params**:
+    - `user_id`: The user_id of the account to query data from
+    - `objects` *(optinoal)*: A comma separated, spaceless list of values to query from the database. The following are recognized parameters: `username`, `gamesPlayed`, `gamesWon`, `averageScore`
 
 - `PUT pickle/user`
+    ---
+    Used to modify user data, such as games played or username. For each value to modify, include a parameter of that value's name and its new value.
+
+    **params**:
+    - `user_id`: The user_id of the account to modify data
+    - `username` *(optional*):
+    - `gamesPlayed` *(optional*):
+    - `gamesWon` *(optional*):
+    - `averageScore` *(optional*):
 
 - `POST pickle/user`
-
-- `DELETE pickle/user`
-
-- `GET pickle/user/id`
-
-- `GET pickle/user/games`
-
-- `GET pickle/game`
-
-- `POST pickle/game`
-
-
-
-- `POST pickle/registerUser`
-    **params**: username, password
+    ---
     Creates a user account in the database with a given username and password.
 
-- `GET pickle/getUserID`
-    **params**: username, apiToken
-    Returns a user ID used by the database for a given username. This request will only be completed if the current user (authenticated by apiToken) is friends with the requested user.
+    **params**:
+    - `username`:
+    - `password`:
 
-- `GET pickle/getUsername`
-    **params**: userId, apiToken
-    Returns the username associated with a specific user ID. This request will only be completed if the current user (authenticated by apiToken) is friends with the requested user.
+- `DELETE pickle/user`
+    ---
+    Deletes a user account from the database. This does not remove the user ID, but instead removes the user data (games played/won, average score, etc), removes their password hash, and replaces their username with "deleted_user". All game records which this user participated in will remain in the database, with their user_id returning the "deleted_user" username, and with no other data accessible.
 
-- `GET pickle/getUserStats`
-    **params**: userId, apiToken
-    Returns the statistics/data associated with a specific user ID. This request will only be completed if the current user (authenticated by apiToken) is friends with the requested user.
+    **params**:
+    - `user_id`: the user ID of the account to delete.
+    - `password`: requires password in addition to apiKey for additional authentication
 
-- `POST pickle/registerGame`
-    **params**: winnerId, loserId, winnerPoints, loserPoints, apiToken,
-    Registers a completed game in the database, including the winner and loser user IDs and points of each player. The current user (authenticated by apiToken) must be a participant in the game.
+- `GET pickle/user/id`
+    ---
+    Returns a user ID used by the database for a given username, if the request sender has permission to view the requested user.
 
-- `GET pickle/getGame`
-    **params**: gameId, apiToken
-    Returns information on a game of a specific game ID. Returns winner/loser user IDs, and winner/loser points
+    **params**:
+    - `username`: the username of the user to request ID for
 
-- `GET pickle/getAllGames`
-    **params**: apiToken
-    Returns a list of game IDs for all games which the user (authenticated by apiToken) has participated in.
+- `GET pickle/user/games`
+    ---
+    Returns a list of game IDs for which the given user (by user ID) has participated in. Optionally, the `won` parameter can be used to filter for games that the user either won or lost.
+
+    **params**:
+    - `user_id`: the user ID to request the games list from
+    - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
+
+## pickle/game
+- `GET pickle/game`
+    ---
+    Returns the data for a given game, specified by `game_id`. This data includes (in this order): game ID, winner user ID, loser user ID, winner points, loser points
+
+    **params**:
+    - `game_id`: the game ID of the game to request
+
+- `POST pickle/game`
+    ---
+    Used to register a game in the database. All information about the game must be provided. Returns the game ID of the newly registered game.
+
+    **params**:
+    - `winner_id`: user ID of the winning player
+    - `loser_id`: user ID of the losing played
+    - `winner_points`: the number of points scored by the winning player
+    - `loser_points`: the number of points scored by the losing player

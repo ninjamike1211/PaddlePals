@@ -241,7 +241,7 @@ class WebServer:
             if any(key not in request.params for key in ('winner_id', 'loser_id', 'winner_points', 'loser_points')):
                 print(f'Invalid parameters for POST pickle/game: {request.params}')
 
-            winner_id = self.check_int(request.params['user_id'])
+            winner_id = self.check_int(request.params['winner_id'])
             loser_id = self.check_int(request.params['loser_id'])
             winner_points = self.check_int(request.params['winner_points'])
             loser_points = self.check_int(request.params['loser_points'])
@@ -251,7 +251,7 @@ class WebServer:
 
             self.cursor.execute(f"""INSERT INTO games VALUES ({gameId},{winner_id},{loser_id},{winner_points},{loser_points})""")
             self.dbCon.commit()
-            return True
+            return gameId
 
         else:
             print(f'ERROR: Endpoint pickle/game does not support request type {request.type}')
