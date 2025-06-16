@@ -136,15 +136,6 @@ class WebServer:
                 if param == 'username':
                     self.cursor.execute(f"UPDATE users SET username='{self.check_str(val)}' WHERE user_id={user_id}")
 
-                elif param == 'gamesPlayed':
-                    self.cursor.execute(f"UPDATE users SET gamesPlayed={self.check_int(val)} WHERE user_id={user_id}")
-
-                elif param == 'gamesWon':
-                    self.cursor.execute(f"UPDATE users SET gamesWon={self.check_int(val)} WHERE user_id={user_id}")
-
-                elif param == 'averageScore':
-                    self.cursor.execute(f"UPDATE users SET averageScore={self.check_float(val)} WHERE user_id={user_id}")
-
                 elif param != 'user_id':
                     print(f'Invalid object parameter: {param}={val}')
 
@@ -251,11 +242,29 @@ class WebServer:
 
             self.cursor.execute(f"""INSERT INTO games VALUES ({gameId},{winner_id},{loser_id},{winner_points},{loser_points})""")
             self.dbCon.commit()
+
+            self.updateUserGameStats(winner_id)
+            self.updateUserGameStats(loser_id)
+
             return gameId
 
         else:
             print(f'ERROR: Endpoint pickle/game does not support request type {request.type}')
             return False
+        
+
+    def updateUserGameStats(self, user_id):
+        self.cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user_id} OR loser_id={user_id}')
+        gamesPlayed = self.cursor.fetchone()[0]
+
+        self.cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user_id}')
+        gamesWon = self.cursor.fetchone()[0]
+
+        self.cursor.execute(f'SELECT AVG(CASE WHEN winner_id={user_id} THEN winner_points ELSE loser_points END) FROM games WHERE winner_id={user_id} OR loser_id={user_id}')
+        averageScore = self.cursor.fetchone()[0]
+
+        self.cursor.execute(f'UPDATE users SET gamesPlayed={gamesPlayed}, gamesWon={gamesWon}, averageScore={averageScore} WHERE user_id={user_id}')
+        self.dbCon.commit()
 
 
     def close(self):

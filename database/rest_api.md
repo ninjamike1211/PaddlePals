@@ -25,14 +25,11 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `PUT pickle/user`
     ---
-    Used to modify user data, such as games played or username. For each value to modify, include a parameter of that value's name and its new value.
+    Used to modify user data, such as username. For each value to modify, include a parameter of that value's name and its new value.
 
     **params**:
     - `user_id`: The user_id of the account to modify data
     - `username` *(optional*):
-    - `gamesPlayed` *(optional*):
-    - `gamesWon` *(optional*):
-    - `averageScore` *(optional*):
 
 - `POST pickle/user`
     ---
