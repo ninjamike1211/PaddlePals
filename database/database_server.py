@@ -1,21 +1,37 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from database_api import restAPI
 
 class DatabaseServer(BaseHTTPRequestHandler):
 
+    def pickle_handle_request(self):
+        print(f'GET {self.path}')
+
+        try:
+            response = pickleAPI.handle_request(self.command, self.path)
+            print(response)
+
+        except Exception as error:
+            print(f'ERROR: {error}')
+            response = 'Error'
+
+        finally:
+            self.send_response(200)
+            self.end_headers()
+
+            self.wfile.write(bytes(str(response), 'utf-8'))
+
     def do_GET(self):
-        print(self.path)
-        self.send_response_only(200)
-    #    if self.path == '/':
-    #        self.path = '/test.html'
-    #    try:
-    #        file_to_open = open(self.path[1:]).read()
-    #        self.send_response(200)
-    #    except:
-    #        file_to_open = "File not found"
-    #        self.send_response(404)
-    #    self.end_headers()
-    #    self.wfile.write(bytes(file_to_open, 'utf-8'))
+        return self.pickle_handle_request()
 
+    def do_PUT(self):
+        return self.pickle_handle_request()
 
+    def do_POST(self):
+        return self.pickle_handle_request()
+
+    def do_DELETE(self):
+        return self.pickle_handle_request()
+
+pickleAPI = restAPI()
 httpd = HTTPServer(('localhost',8080),DatabaseServer)
 httpd.serve_forever()

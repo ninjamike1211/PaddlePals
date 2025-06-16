@@ -41,6 +41,11 @@ class restAPI:
         
         except ValueError as error:
             raise self.ValidationError(val, 'float')
+        
+    def is_user_valid(self, user_id):
+        self.cursor.execute(f"SELECT valid FROM users WHERE user_id={user_id}")
+        valid = self.cursor.fetchone()
+        return valid and valid[0]
 
 
     def decode_request(self, request_type, request:str):
@@ -126,6 +131,10 @@ class restAPI:
             user_id = self.check_int(request.params['user_id'])
             # TODO: password authentication
 
+            if not self.is_user_valid(user_id):
+                print(f'User ID {user_id} is not a valid user')
+                return False
+
             for param, val in request.params.items():
 
                 if param == 'username':
@@ -149,7 +158,7 @@ class restAPI:
             self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
             user_id = self.cursor.fetchone()[0] + 1
 
-            self.cursor.execute(f"INSERT INTO users VALUES ({user_id}, '{username}', '{password}', 0, 0, 0.0)")
+            self.cursor.execute(f"INSERT INTO users VALUES ({user_id}, '{username}', '{password}', 1, 0, 0, 0.0)")
             self.dbCon.commit()
             return user_id
         
@@ -161,7 +170,11 @@ class restAPI:
             user_id = self.check_int(request.params['user_id'])
             # TODO: password authentication
 
-            self.cursor.execute(f"UPDATE users SET username='deleted_user', passwordHash='', gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id={user_id}")
+            if not self.is_user_valid(user_id):
+                print(f'User ID {user_id} is not a valid user')
+                return False
+
+            self.cursor.execute(f"UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id={user_id}")
             self.dbCon.commit()
             return True
 
@@ -191,6 +204,10 @@ class restAPI:
             return False
         
         user_id = self.check_int(request.params['user_id'])
+
+        if not self.is_user_valid(user_id):
+            print(f'User ID {user_id} is not a valid user')
+            return False
         
         if 'won' in request.params:
             if request.params['won'] == 'true':
@@ -232,6 +249,14 @@ class restAPI:
             winner_points = self.check_int(request.params['winner_points'])
             loser_points = self.check_int(request.params['loser_points'])
 
+            if not self.is_user_valid(winner_id):
+                print(f'User ID {winner_id} is not a valid user')
+                return False
+            
+            if not self.is_user_valid(loser_id):
+                print(f'User ID {loser_id} is not a valid user')
+                return False
+
             self.cursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
             gameId = self.cursor.fetchone()[0] + 1
 
@@ -249,6 +274,10 @@ class restAPI:
         
 
     def updateUserGameStats(self, user_id):
+
+        if not self.is_user_valid(user_id):
+            return False
+
         self.cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user_id} OR loser_id={user_id}')
         gamesPlayed = self.cursor.fetchone()[0]
 
@@ -260,6 +289,7 @@ class restAPI:
 
         self.cursor.execute(f'UPDATE users SET gamesPlayed={gamesPlayed}, gamesWon={gamesWon}, averageScore={averageScore} WHERE user_id={user_id}')
         self.dbCon.commit()
+        return True
 
 
     def close(self):
@@ -267,22 +297,24 @@ class restAPI:
         self.dbCon.close()
 
 
-try:
+def __main__():
 
-    server = restAPI()
+    try:
 
-    while True:
+        server = restAPI()
 
-        request_type = input('Enter request type: ')
-        if request_type == 'exit':
-            break
+        while True:
 
-        request = input('Enter an API endpoint URI: ')
-        result = server.handle_request(request_type, request)
-        
-        print(f'Result: {result}\n')
+            request_type = input('Enter request type: ')
+            if request_type == 'exit':
+                break
+
+            request = input('Enter an API endpoint URI: ')
+            result = server.handle_request(request_type, request)
+            
+            print(f'Result: {result}\n')
 
 
 
-finally:
-    server.close()
+    finally:
+        server.close()
