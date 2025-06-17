@@ -57,7 +57,7 @@ class restAPI:
         
         uri_parts = request_parts[0][1:].split('/', 1)
         if len(uri_parts) != 2 or uri_parts[0] != 'pickle':
-            print(f'Invalid URI: {uri}')
+            print(f'Invalid URI: {request_parts[0]}')
             return False
         endpoint = uri_parts[1].replace('/', '_')
         
@@ -124,8 +124,8 @@ class restAPI:
             return result
         
         elif request.type == 'PUT':
-            if 'user_id' not in request.params or 'password' not in request.params:
-                print(f'Invalid parameters for PUT pickle/user, must include user ID and password: {request.params}')
+            if 'user_id' not in request.params:
+                print(f'Invalid parameters for PUT pickle/user, must include user ID: {request.params}')
                 return False
             
             user_id = self.check_int(request.params['user_id'])
@@ -163,8 +163,8 @@ class restAPI:
             return user_id
         
         elif request.type == 'DELETE':
-            if 'user_id' not in request.params or 'password' not in request.params:
-                print(f'Invalid parameters for DELETE pickle/user, must include user ID and password: {request.params}')
+            if 'user_id' not in request.params:
+                print(f'Invalid parameters for DELETE pickle/user, must include user ID: {request.params}')
                 return False
             
             user_id = self.check_int(request.params['user_id'])
