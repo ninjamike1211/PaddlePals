@@ -9,8 +9,8 @@ try:
     conn = sqlite3.connect('pickle.db')
     cursor = conn.cursor()
 
-    cursor.execute('CREATE TABLE users(user_id, username, passwordHash, valid, gamesPlayed, gamesWon, averageScore)')
-    cursor.execute('CREATE TABLE games(game_id, winner_id, loser_id, winner_points, loser_points)')
+    cursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
+    cursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
 
     cursor.execute("""INSERT INTO users VALUES
                    (0, 'ninjamike1211', 'ah50jkg0q', 1, 0, 0, 0.0),

@@ -3,15 +3,6 @@
 The PickleConnect database system is based on a RESTful API, which allows the android app to query the database over a network connection using standard HTTP requests. Below is a list of endpoints.
 
 # Endpoints:
-
-## **pickle/apiToken**
-- `GET pickle/apiToken`
-    ---
-    Authenticates using a username and password, returns an API token for accessing user account data.
-
-    **params**:
-    - `username`: account username
-    - `password`: account password
     
 
 ## pickle/user
@@ -61,6 +52,14 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
+
+- `GET pickle/user/auth`
+    ---
+    Authenticates using a username and password, returns an API token for accessing user account data.
+
+    **params**:
+    - `username`: account username
+    - `password`: account password
 
 ## pickle/game
 - `GET pickle/game`

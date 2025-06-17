@@ -1,4 +1,5 @@
 import sqlite3
+import hashlib
 from dataclasses import dataclass
 
 class restAPI:
@@ -152,13 +153,15 @@ class restAPI:
                 return False
             
             username = self.check_str(request.params['username'])
-            password = self.check_str(request.params['password'])  
+            password = self.check_str(request.params['password'])
             # TODO: password authentication
+
+            pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
 
             self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
             user_id = self.cursor.fetchone()[0] + 1
 
-            self.cursor.execute(f"INSERT INTO users VALUES ({user_id}, '{username}', '{password}', 1, 0, 0, 0.0)")
+            self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash))
             self.dbCon.commit()
             return user_id
         
@@ -225,6 +228,32 @@ class restAPI:
 
         games_list = self.cursor.fetchall()
         return games_list
+        
+    
+    def api_user_auth(self, request: APIRequest):
+        if request.type != 'GET':
+            print(f'Invalid command type {request.type} for pickle/auth, only GET supported')
+            return False
+
+        if 'username' not in request.params or 'password' not in request.params:
+            print(f'Invalid parameters for POST pickle/user, must include username and password: {request.params}')
+            return False
+        
+        username = self.check_str(request.params['username'])
+        password = self.check_str(request.params['password'])
+
+        pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
+
+        self.cursor.execute("SELECT passwordHash FROM users WHERE username=?", (username,))
+        real_hash = self.cursor.fetchone()
+
+        if real_hash and pass_hash == real_hash[0]:
+            print(f'Authentication successful for user {username}')
+            return True
+        
+        else:
+            print(f'Authentication failed for user {username}')
+            return False
     
 
     def api_game(self, request: APIRequest):

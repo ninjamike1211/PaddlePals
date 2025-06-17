@@ -12,7 +12,7 @@ class DatabaseServer(BaseHTTPRequestHandler):
 
         except Exception as error:
             print(f'ERROR: {error}')
-            response = 'Error'
+            response = f'Error: {error}'
 
         finally:
             self.send_response(200)
