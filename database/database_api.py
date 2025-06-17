@@ -44,7 +44,7 @@ class restAPI:
             raise self.ValidationError(val, 'float')
         
     def is_user_valid(self, user_id):
-        self.cursor.execute(f"SELECT valid FROM users WHERE user_id={user_id}")
+        self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self.cursor.fetchone()
         return valid and valid[0]
 
@@ -120,7 +120,7 @@ class restAPI:
             else:
                 get_objects = 'username,gamesPlayed,gamesWon,averageScore'
 
-            self.cursor.execute(f"SELECT {get_objects} FROM users WHERE user_id={user_id}")
+            self.cursor.execute(f"SELECT {get_objects} FROM users WHERE user_id=?", (user_id,))
             result = self.cursor.fetchone()
             return result
         
@@ -139,7 +139,7 @@ class restAPI:
             for param, val in request.params.items():
 
                 if param == 'username':
-                    self.cursor.execute(f"UPDATE users SET username='{self.check_str(val)}' WHERE user_id={user_id}")
+                    self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (self.check_str(val), user_id))
 
                 elif param != 'user_id':
                     print(f'Invalid object parameter: {param}={val}')
@@ -177,7 +177,7 @@ class restAPI:
                 print(f'User ID {user_id} is not a valid user')
                 return False
 
-            self.cursor.execute(f"UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id={user_id}")
+            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id=?", (user_id,))
             self.dbCon.commit()
             return True
 
@@ -187,10 +187,10 @@ class restAPI:
             print(f'Invalid request for pickle/user/id: {request}')
             return False
         
-        username = self.check_int(request.params['username'])
+        username = self.check_str(request.params['username'])
         # TODO: password authentication
         
-        self.cursor.execute(f"SELECT user_id FROM users WHERE username='{username}'")
+        self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
         userId = self.cursor.fetchone()
 
         if userId:
@@ -214,17 +214,17 @@ class restAPI:
         
         if 'won' in request.params:
             if request.params['won'] == 'true':
-                self.cursor.execute(f"SELECT game_id FROM games WHERE winner_id={user_id}")
+                self.cursor.execute("SELECT game_id FROM games WHERE winner_id=?", (user_id,))
 
             elif request.params['won'] == 'false':
-                self.cursor.execute(f"SELECT game_id FROM games WHERE loser_id={user_id}")
+                self.cursor.execute("SELECT game_id FROM games WHERE loser_id=?", (user_id,))
 
             else:
                 print(f'Invalid value for parameter "won" in GET pickle/user/games: {user_id}')
                 return False
             
         else:
-            self.cursor.execute(f"SELECT game_id FROM games WHERE winner_id={user_id} OR loser_id={user_id}")
+            self.cursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
 
         games_list = self.cursor.fetchall()
         return games_list
@@ -264,7 +264,7 @@ class restAPI:
             
             game_id = self.check_int(request.params['game_id'])
             
-            self.cursor.execute(f"SELECT * FROM games WHERE game_id={game_id}")
+            self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
             game = self.cursor.fetchone()
             return game
             
@@ -289,7 +289,9 @@ class restAPI:
             self.cursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
             gameId = self.cursor.fetchone()[0] + 1
 
-            self.cursor.execute(f"""INSERT INTO games VALUES ({gameId},{winner_id},{loser_id},{winner_points},{loser_points})""")
+            self.cursor.execute(
+                "INSERT INTO games VALUES (?, ?, ?, ?, ?)",
+                (gameId, winner_id, loser_id, winner_points, loser_points))
             self.dbCon.commit()
 
             self.updateUserGameStats(winner_id)
@@ -307,16 +309,16 @@ class restAPI:
         if not self.is_user_valid(user_id):
             return False
 
-        self.cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user_id} OR loser_id={user_id}')
+        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
         gamesPlayed = self.cursor.fetchone()[0]
 
-        self.cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user_id}')
+        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=', (user_id,))
         gamesWon = self.cursor.fetchone()[0]
 
-        self.cursor.execute(f'SELECT AVG(CASE WHEN winner_id={user_id} THEN winner_points ELSE loser_points END) FROM games WHERE winner_id={user_id} OR loser_id={user_id}')
+        self.cursor.execute('SELECT AVG(CASE WHEN winner_id=? THEN winner_points ELSE loser_points END) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id, user_id))
         averageScore = self.cursor.fetchone()[0]
 
-        self.cursor.execute(f'UPDATE users SET gamesPlayed={gamesPlayed}, gamesWon={gamesWon}, averageScore={averageScore} WHERE user_id={user_id}')
+        self.cursor.execute('UPDATE users SET gamesPlayed=?, gamesWon=?, averageScore=? WHERE user_id=?', (gamesPlayed, gamesWon, averageScore, user_id))
         self.dbCon.commit()
         return True
 
