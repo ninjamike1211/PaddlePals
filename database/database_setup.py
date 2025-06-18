@@ -1,6 +1,17 @@
 import os
 import random
 import sqlite3
+import hashlib
+
+users = {
+    'ninjamike1211': 'password0',
+    'aje0714': 'password1',
+    'BOT-Lee': 'password2',
+    'jpk102pitt': 'password3',
+    'testUser': 'testPassword',
+}
+
+total_games = 200
 
 try:
     if os.path.isfile('pickle.db'):
@@ -12,16 +23,21 @@ try:
     cursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
     cursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
 
-    cursor.execute("""INSERT INTO users VALUES
-                   (0, 'ninjamike1211', 'ah50jkg0q', 1, 0, 0, 0.0),
-                   (1, 'aje0714', 'asdfi324hl', 1, 0, 0, 0.0),
-                   (2, 'BOT-Lee', '092bhng082h', 1, 0, 0, 0.0),
-                   (3, 'jpk102pitt', '3hladf09hy3n', 1, 0, 0, 0.0)
-                   """)
+    for i, (username,password) in enumerate(users.items()):
+        pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
+
+        cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (i, username, pass_hash))
+
+        # cursor.execute("""INSERT INTO users VALUES
+        #             (0, 'ninjamike1211', 'ah50jkg0q', 1, 0, 0, 0.0),
+        #             (1, 'aje0714', 'asdfi324hl', 1, 0, 0, 0.0),
+        #             (2, 'BOT-Lee', '092bhng082h', 1, 0, 0, 0.0),
+        #             (3, 'jpk102pitt', '3hladf09hy3n', 1, 0, 0, 0.0)
+        #             """)
     games = ''
-    for i in range(0,100):
-        user_win = random.randint(0,3)
-        user_lose = random.randint(0,2)
+    for i in range(0, total_games):
+        user_win = random.randint(0, len(users)-1)
+        user_lose = random.randint(0, len(users)-2)
         if user_lose >= user_win:
             user_lose += 1
 
@@ -40,7 +56,7 @@ try:
 
     conn.commit()
 
-    for user in range(0,4):
+    for user in range(0,len(users)):
         cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user} OR loser_id={user}')
         gamesPlayed = cursor.fetchone()[0]
 
