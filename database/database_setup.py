@@ -26,7 +26,7 @@ try:
     for i, (username,password) in enumerate(users.items()):
         pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
 
-        cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (i, username, pass_hash))
+        cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (i+1, username, pass_hash))
 
         # cursor.execute("""INSERT INTO users VALUES
         #             (0, 'ninjamike1211', 'ah50jkg0q', 1, 0, 0, 0.0),
@@ -36,8 +36,8 @@ try:
         #             """)
     games = ''
     for i in range(0, total_games):
-        user_win = random.randint(0, len(users)-1)
-        user_lose = random.randint(0, len(users)-2)
+        user_win = random.randint(1, len(users))
+        user_lose = random.randint(1, len(users)-1)
         if user_lose >= user_win:
             user_lose += 1
 
@@ -56,7 +56,7 @@ try:
 
     conn.commit()
 
-    for user in range(0,len(users)):
+    for user in range(1,len(users)+1):
         cursor.execute(f'SELECT COUNT(*) FROM games WHERE winner_id={user} OR loser_id={user}')
         gamesPlayed = cursor.fetchone()[0]
 

@@ -155,6 +155,7 @@ class restAPI:
             username = self.check_str(request.params['username'])
             password = self.check_str(request.params['password'])
             # TODO: password authentication
+            # TODO: check that username doesn't already exist
 
             pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
 
