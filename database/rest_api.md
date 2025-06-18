@@ -45,6 +45,14 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `username`: the username of the user to request ID for
 
+- `GET pickle/user/friends`
+    ---
+    Returns a list of users who the current user is friends with.
+
+    **params**:
+    - `user_id`: the user ID to query list of friends from
+    - `include_username` *(optional)*: if this is set to `true`, the returned value will include a list of usernames as well
+
 - `GET pickle/user/games`
     ---
     Returns a list of game IDs for which the given user (by user ID) has participated in. Optionally, the `won` parameter can be used to filter for games that the user either won or lost.

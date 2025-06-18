@@ -22,18 +22,13 @@ try:
 
     cursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
     cursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
+    cursor.execute('CREATE TABLE friends(userA, userB)')
 
     for i, (username,password) in enumerate(users.items()):
         pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
 
         cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (i+1, username, pass_hash))
 
-        # cursor.execute("""INSERT INTO users VALUES
-        #             (0, 'ninjamike1211', 'ah50jkg0q', 1, 0, 0, 0.0),
-        #             (1, 'aje0714', 'asdfi324hl', 1, 0, 0, 0.0),
-        #             (2, 'BOT-Lee', '092bhng082h', 1, 0, 0, 0.0),
-        #             (3, 'jpk102pitt', '3hladf09hy3n', 1, 0, 0, 0.0)
-        #             """)
     games = ''
     for i in range(0, total_games):
         user_win = random.randint(1, len(users))

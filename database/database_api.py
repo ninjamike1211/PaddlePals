@@ -42,6 +42,9 @@ class restAPI:
         
         except ValueError as error:
             raise self.ValidationError(val, 'float')
+
+    def gen_password_hash(self, password:str):
+        return bytearray(hashlib.sha256(password.encode()).digest())
         
     def is_user_valid(self, user_id):
         self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
@@ -157,7 +160,7 @@ class restAPI:
             # TODO: password authentication
             # TODO: check that username doesn't already exist
 
-            pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
+            pass_hash = self.gen_password_hash(password)
 
             self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
             user_id = self.cursor.fetchone()[0] + 1
@@ -243,7 +246,7 @@ class restAPI:
         username = self.check_str(request.params['username'])
         password = self.check_str(request.params['password'])
 
-        pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
+        pass_hash = self.gen_password_hash(password)
 
         self.cursor.execute("SELECT passwordHash FROM users WHERE username=?", (username,))
         real_hash = self.cursor.fetchone()
