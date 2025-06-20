@@ -33,7 +33,7 @@ class DatabaseServer(BaseHTTPRequestHandler):
         return self.pickle_handle_request()
 
 pickleAPI = restAPI()
-httpd = HTTPServer(('localhost',8080),DatabaseServer)
+httpd = HTTPServer(('',80),DatabaseServer)
 
 print('PicklePals server started, now listening for incoming requests')
 httpd.serve_forever()
