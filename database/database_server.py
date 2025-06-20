@@ -4,23 +4,21 @@ from database_api import restAPI
 class DatabaseServer(BaseHTTPRequestHandler):
 
     def pickle_handle_request(self):
-        print(f'GET {self.path}')
+        print(f'{self.command} {self.path}')
 
         try:
             response, code = pickleAPI.handle_request(self.command, self.path)
-            print(response)
-            self.send_response(code)
+            print(response, code)
+
+            if code == 200:
+                self.send_response(code)
+                self.end_headers()
+                self.wfile.write(bytes(str(response), 'utf-8'))
+            else:
+                self.send_error(code, str(response))
 
         except Exception as error:
-            print(f'ERROR: {error}')
-            response = f'Error: {error}'
-
-            self.send_response(400)
-
-        finally:
-            self.end_headers()
-
-            self.wfile.write(bytes(str(response), 'utf-8'))
+            self.send_error(400, f'Error: {error}')
 
     def do_GET(self):
         return self.pickle_handle_request()
