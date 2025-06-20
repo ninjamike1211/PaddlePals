@@ -350,6 +350,9 @@ class restAPI:
         else:
             return f'ERROR: Endpoint pickle/game does not support request type {request.type}', 405
         
+    def api_coffee(self, request: APIRequest):
+        return "Why...? We don't serve coffee here, just... idk, go find a cafe or something, maybe there's a pickleball court nearby.", 418
+        
 
     def updateUserGameStats(self, user_id):
 
