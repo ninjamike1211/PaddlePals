@@ -9,13 +9,15 @@ class DatabaseServer(BaseHTTPRequestHandler):
         try:
             response = pickleAPI.handle_request(self.command, self.path)
             print(response)
+            self.send_response(200)
 
         except Exception as error:
             print(f'ERROR: {error}')
             response = f'Error: {error}'
 
+            self.send_response(400)
+
         finally:
-            self.send_response(200)
             self.end_headers()
 
             self.wfile.write(bytes(str(response), 'utf-8'))
@@ -34,4 +36,6 @@ class DatabaseServer(BaseHTTPRequestHandler):
 
 pickleAPI = restAPI()
 httpd = HTTPServer(('localhost',8080),DatabaseServer)
+
+print('PicklePals server started, now listening for incoming requests')
 httpd.serve_forever()

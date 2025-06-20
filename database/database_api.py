@@ -204,6 +204,76 @@ class restAPI:
             print(f'Username not found: {username}')
             return False
         
+    def api_user_friends(self, request: APIRequest):
+        if 'user_id' not in request.params:
+            print('ERROR: pickle/user/friends must include "user_id" parameter')
+            return False
+
+        user_id = self.check_int(request.params['user_id'])
+
+        if not self.is_user_valid(user_id):
+            print(f'User ID {user_id} is not a valid user')
+            return False
+
+        if request.type == 'GET':
+            self.cursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
+            friend_list = self.cursor.fetchall()
+
+            if 'include_username' in request.params and request.params['include_username'] == 'true':
+                username_list = []
+                for id in friend_list:
+                    self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
+                    username_list.append(self.cursor.fetchone()[0])
+
+                return [(friend_list[i][0], username_list[i]) for i in range(0, len(friend_list))]
+            
+            else:
+                return [id[0] for id in friend_list]
+
+        elif request.type == 'POST':
+            if 'friend_id' in request.params:
+                friend_id = self.check_int(request.params['friend_id'])
+                if not self.is_user_valid(friend_id):
+                    print(f'User ID {friend_id} is not a valid user')
+                    return False
+
+            elif 'friend_username' in request.params:
+                username = self.check_str(request.params['friend_username'])
+
+                self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+                raw_id = self.cursor.fetchone()
+                if not raw_id:
+                    print(f'ERROR: unable to find user with username "{username}"')
+                    return False
+                
+                friend_id = raw_id[0]
+
+            else:
+                print('ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.')
+                return False
+            
+            self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
+            self.dbCon.commit()
+            return True
+
+        elif request.type == 'DELETE':
+            if 'friend_id' not in request.params:
+                print('ERROR: DELETE pickle/user/friends must include "friend_id" parameter')
+                return False
+
+            friend_id = self.check_int(request.params['friend_id'])
+
+            if not self.is_user_valid(friend_id):
+                print(f'User ID {friend_id} is not a valid user')
+                return False
+            
+            self.cursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
+            self.dbCon.commit()
+            return True
+
+        else:
+            print(f'pickle/user/friends does not support command "{request.type}"')
+        
 
     def api_user_games(self, request: APIRequest):
         if request.type != 'GET':
@@ -330,26 +400,3 @@ class restAPI:
     def close(self):
         self.cursor.close()
         self.dbCon.close()
-
-
-def __main__():
-
-    try:
-
-        server = restAPI()
-
-        while True:
-
-            request_type = input('Enter request type: ')
-            if request_type == 'exit':
-                break
-
-            request = input('Enter an API endpoint URI: ')
-            result = server.handle_request(request_type, request)
-            
-            print(f'Result: {result}\n')
-
-
-
-    finally:
-        server.close()

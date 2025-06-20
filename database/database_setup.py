@@ -22,7 +22,7 @@ try:
 
     cursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
     cursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
-    cursor.execute('CREATE TABLE friends(userA, userB)')
+    cursor.execute('CREATE TABLE friends(userA INT, userB INT)')
 
     for i, (username,password) in enumerate(users.items()):
         pass_hash = bytearray(hashlib.sha256(password.encode()).digest())
