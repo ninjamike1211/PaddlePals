@@ -17,7 +17,7 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
         cursor.execute('CREATE TABLE friends(userA INT, userB INT)')
 
         pass_hash = bytearray(hashlib.sha256('root'.encode()).digest())
-        cursor.execute("INSERT INTO users VALUES (0, 'admin', ?, 1, 0, 0, 0.0)", (pass_hash,))
+        cursor.execute("INSERT INTO users VALUES (0, 'admin', ?, 0, 0, 0, 0.0)", (pass_hash,))
         conn.commit()
 
         if users:

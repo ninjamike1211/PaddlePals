@@ -100,6 +100,9 @@ class restAPI:
                 return f'Invalid parameters for GET pickle/user, must include user ID: {request.params}', 405
             
             user_id = self.check_int(request.params['user_id'])
+
+            if not self.is_user_valid(user_id):
+                return f'User ID {user_id} is not a valid user', 404
             
             if 'objects' in request.params:
                 objects = request.params['objects'].split(',')
@@ -170,7 +173,7 @@ class restAPI:
             if not self.is_user_valid(user_id):
                 return f'User ID {user_id} is not a valid user', 404
 
-            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id=?", (user_id,))
+            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
             self.dbCon.commit()
             return True, 200
 
@@ -335,17 +338,21 @@ class restAPI:
                 return f'User ID {loser_id} is not a valid user', 404
 
             self.cursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
-            gameId = self.cursor.fetchone()[0] + 1
+            game_id_raw = self.cursor.fetchone()
+            if game_id_raw:
+                game_id = game_id_raw[0] + 1
+            else:
+                game_id = 0
 
             self.cursor.execute(
                 "INSERT INTO games VALUES (?, ?, ?, ?, ?)",
-                (gameId, winner_id, loser_id, winner_points, loser_points))
+                (game_id, winner_id, loser_id, winner_points, loser_points))
             self.dbCon.commit()
 
             self.updateUserGameStats(winner_id)
             self.updateUserGameStats(loser_id)
 
-            return gameId, 200
+            return game_id, 200
 
         else:
             return f'ERROR: Endpoint pickle/game does not support request type {request.type}', 405
@@ -362,7 +369,7 @@ class restAPI:
         self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
         gamesPlayed = self.cursor.fetchone()[0]
 
-        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=', (user_id,))
+        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=?', (user_id,))
         gamesWon = self.cursor.fetchone()[0]
 
         self.cursor.execute('SELECT AVG(CASE WHEN winner_id=? THEN winner_points ELSE loser_points END) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id, user_id))
