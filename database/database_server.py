@@ -7,9 +7,9 @@ class DatabaseServer(BaseHTTPRequestHandler):
         print(f'GET {self.path}')
 
         try:
-            response = pickleAPI.handle_request(self.command, self.path)
+            response, code = pickleAPI.handle_request(self.command, self.path)
             print(response)
-            self.send_response(200)
+            self.send_response(code)
 
         except Exception as error:
             print(f'ERROR: {error}')
