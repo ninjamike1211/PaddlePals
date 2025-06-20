@@ -3,15 +3,6 @@
 The PickleConnect database system is based on a RESTful API, which allows the android app to query the database over a network connection using standard HTTP requests. Below is a list of endpoints.
 
 # Endpoints:
-
-## **pickle/apiToken**
-- `GET pickle/apiToken`
-    ---
-    Authenticates using a username and password, returns an API token for accessing user account data.
-
-    **params**:
-    - `username`: account username
-    - `password`: account password
     
 
 ## pickle/user
@@ -54,6 +45,31 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `username`: the username of the user to request ID for
 
+- `GET pickle/user/friends`
+    ---
+    Returns a list of users who the current user is friends with.
+
+    **params**:
+    - `user_id`: the user ID to query list of friends from
+    - `include_username` *(optional)*: if this is set to `true`, the returned value will include a list of usernames as well
+
+- `POST pickle/user/friends`
+    ---
+    Adds a friend to the user's friend list. The friend to add is specified with either their user ID (`friend_id`), or their username (`friend_username`). Only one of these may be included in the request.
+
+    **params**:
+    - `user_id`: user ID of the current user
+    - `friend_id` *(optional)*: user ID of the friend to add to friends list
+    - `friend_username` *(optional)*: username of the friend to add to friends list
+
+- `DELETE pickle/user/friends`
+    ---
+    Removes a friend from the user's friend list, specified using the friends user ID (`friend_id`).
+
+    **params**:
+    - `user_id`: user ID of the current user
+    - `friend_id`: user ID of the friend to remove from friends list
+
 - `GET pickle/user/games`
     ---
     Returns a list of game IDs for which the given user (by user ID) has participated in. Optionally, the `won` parameter can be used to filter for games that the user either won or lost.
@@ -61,6 +77,14 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
+
+- `GET pickle/user/auth`
+    ---
+    Authenticates using a username and password, returns an API token for accessing user account data.
+
+    **params**:
+    - `username`: account username
+    - `password`: account password
 
 ## pickle/game
 - `GET pickle/game`
