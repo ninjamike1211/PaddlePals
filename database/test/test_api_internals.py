@@ -14,10 +14,9 @@ def test_init(tmp_path):
     assert api.cursor
 
     # Check default user admin is the only user
-    api.cursor.execute("SELECT * FROM users")
+    api.cursor.execute("SELECT user_id, username, valid, gamesPlayed, gamesWon, averageScore FROM users")
     users = api.cursor.fetchall()
-    pass_hash = api.gen_password_hash('root')
-    assert users == [(0, 'admin', pass_hash, 0, 0, 0, 0.0)]
+    assert users == [(0, 'admin', 0, None, None, None)]
 
     # Check that games table is empty
     api.cursor.execute("SELECT COUNT(*) FROM games")
@@ -138,7 +137,7 @@ def test_delete_user(tmp_path):
 
     api.cursor.execute("SELECT * FROM users WHERE user_id=1")
     user = api.cursor.fetchall()
-    assert user == [(1, 'deleted_user', None, 0, None, None, None)]
+    assert user == [(1, 'deleted_user', None, None, 0, None, None, None)]
 
 
 def test_modify_username(tmp_path):
@@ -199,12 +198,12 @@ def test_post_game(tmp_path):
 
     request = api.APIRequest('GET', 'user_games', {'user_id':'1'})
     gamesA, code = api.api_user_games(request)
-    assert gamesA == [(0,), (1,)]
+    assert gamesA == [0, 1]
     assert code == 200
 
     request = api.APIRequest('GET', 'user_games', {'user_id':'2'})
     gamesB, code = api.api_user_games(request)
-    assert gamesB == [(0,), (1,)]
+    assert gamesB == [0, 1]
     assert code == 200
 
     request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'gamesPlayed,gamesWon,averageScore'})
@@ -215,4 +214,61 @@ def test_post_game(tmp_path):
     request = api.APIRequest('GET', 'user', {'user_id':'2', 'objects':'gamesPlayed,gamesWon,averageScore'})
     userA_data, code = api.api_user(request)
     assert userA_data == (2, 1, 9.5)
+    assert code == 200
+
+
+def test_friends(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'passA', 'userB':'passB', 'userC':'passC'})
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'1'})
+    friends, code = api.api_user_friends(request)
+    assert not friends
+    assert code == 200
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'2'})
+    friends, code = api.api_user_friends(request)
+    assert not friends
+    assert code == 200
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'3'})
+    friends, code = api.api_user_friends(request)
+    assert not friends
+    assert code == 200
+
+    request = api.APIRequest('POST', 'user_friends', {'user_id':'1', 'friend_id':'2'})
+    result, code = api.api_user_friends(request)
+    assert result
+    assert code == 200
+
+    request = api.APIRequest('POST', 'user_friends', {'user_id':'3', 'friend_username':'userB'})
+    result, code = api.api_user_friends(request)
+    assert result
+    assert code == 200
+
+    request = api.APIRequest('POST', 'user_friends', {'user_id':'3', 'friend_username':'userA'})
+    result, code = api.api_user_friends(request)
+    assert result
+    assert code == 200
+
+    request = api.APIRequest('DELETE', 'user_friends', {'user_id':'2', 'friend_id':'1'})
+    result, code = api.api_user_friends(request)
+    assert result
+    assert code == 200
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'1'})
+    friends, code = api.api_user_friends(request)
+    assert not 2 in friends
+    assert 3 in friends
+    assert code == 200
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'2'})
+    friends, code = api.api_user_friends(request)
+    assert not 1 in friends
+    assert 3 in friends
+    assert code == 200
+
+    request = api.APIRequest('GET', 'user_friends', {'user_id':'3'})
+    friends, code = api.api_user_friends(request)
+    assert 1 in friends
+    assert 2 in friends
     assert code == 200

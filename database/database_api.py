@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import hashlib
 from dataclasses import dataclass
@@ -50,8 +51,22 @@ class restAPI:
         self.cursor.execute("SELECT username FROM users WHERE username=?", (username,))
         return self.cursor.fetchone() is not None
 
-    def gen_password_hash(self, password:str):
-        return bytearray(hashlib.sha256(password.encode()).digest())
+    @staticmethod
+    def gen_password_hash(password:str):
+        salt = bytearray(os.urandom(16))
+        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return hash, salt
+    
+    def check_password(self, username:str, password:str):
+        self.cursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        data = self.cursor.fetchone()
+        if not data:
+            return False
+
+        dbHash = data[0]
+        salt = data[1]
+        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return userHash == dbHash
         
     def is_user_valid(self, user_id):
         self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
@@ -178,12 +193,12 @@ class restAPI:
             if self.is_username_existing(username):
                 return f'Username {username} already exists', 403
 
-            pass_hash = self.gen_password_hash(password)
+            pass_hash, salt = self.gen_password_hash(password)
 
             self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
             user_id = self.cursor.fetchone()[0] + 1
 
-            self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash))
+            self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
             self.dbCon.commit()
             return user_id, 200
         
@@ -197,7 +212,7 @@ class restAPI:
             if not self.is_user_valid(user_id):
                 return f'User ID {user_id} is not a valid user', 404
 
-            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
+            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
             self.dbCon.commit()
             return True, 200
 
@@ -324,12 +339,7 @@ class restAPI:
         username = self.check_str(request.params['username'])
         password = self.check_str(request.params['password'])
 
-        pass_hash = self.gen_password_hash(password)
-
-        self.cursor.execute("SELECT passwordHash FROM users WHERE username=?", (username,))
-        real_hash = self.cursor.fetchone()
-
-        if real_hash and pass_hash == real_hash[0]:
+        if self.check_password(username, password):
             print(f'Authentication successful for user {username}')
             return True, 200
         
