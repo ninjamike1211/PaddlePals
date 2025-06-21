@@ -113,8 +113,8 @@ def test_delete_user(tmp_path):
 
     request = api.APIRequest('GET', 'user', {'user_id':'1'})
     result, code = api.api_user(request)
-    assert type(result) is str
-    assert code == 404
+    assert ('deleted_user', None, None, None)
+    assert code == 200
 
     request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'name'})
     result, code = api.api_user(request)

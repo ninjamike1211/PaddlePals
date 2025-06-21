@@ -57,6 +57,11 @@ class restAPI:
         self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self.cursor.fetchone()
         return valid and valid[0]
+    
+    def is_user_deleted(self, user_id):
+        self.cursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+        deleted = self.cursor.fetchone()
+        return deleted and deleted[0] == 'deleted_user'
 
 
     def decode_request(self, request_type, request:str):
@@ -108,7 +113,7 @@ class restAPI:
             
             user_id = self.check_int(request.params['user_id'])
 
-            if not self.is_user_valid(user_id):
+            if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
                 return f'User ID {user_id} is not a valid user', 404
             
             if 'objects' in request.params:
@@ -306,7 +311,7 @@ class restAPI:
             self.cursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
 
         games_list = self.cursor.fetchall()
-        return games_list, 200
+        return [game[0] for game in games_list], 200
         
     
     def api_user_auth(self, request: APIRequest):
@@ -341,6 +346,10 @@ class restAPI:
             
             self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
             game = self.cursor.fetchone()
+
+            if not game:
+                return f'Game for game_id {game_id} not found', 404
+
             return game, 200
             
 
