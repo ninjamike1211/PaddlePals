@@ -42,6 +42,13 @@ class restAPI:
         
         except ValueError as error:
             raise self.ValidationError(val, 'float')
+        
+    def check_username(self, username: str):
+        return username not in ('admin', 'deleted_user')
+    
+    def is_username_existing(self, username: str):
+        self.cursor.execute("SELECT username FROM users WHERE username=?", (username,))
+        return self.cursor.fetchone() is not None
 
     def gen_password_hash(self, password:str):
         return bytearray(hashlib.sha256(password.encode()).digest())
@@ -137,7 +144,13 @@ class restAPI:
             for param, val in request.params.items():
 
                 if param == 'username':
-                    self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (self.check_str(val), user_id))
+                    if not self.check_username(val):
+                        return f'Invalid username {val}', 400
+                    
+                    if self.is_username_existing(val):
+                        return f'Username {val} already exists', 403
+
+                    self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
 
                 elif param != 'user_id':
                     print(f'Invalid object parameter: {param}={val}')
@@ -153,6 +166,12 @@ class restAPI:
             password = self.check_str(request.params['password'])
             # TODO: password authentication
             # TODO: check that username doesn't already exist
+
+            if not self.check_username(username):
+                return f'Invalid username {username}', 400
+            
+            if self.is_username_existing(username):
+                return f'Username {username} already exists', 403
 
             pass_hash = self.gen_password_hash(password)
 
@@ -185,7 +204,10 @@ class restAPI:
         if len(request.params) != 1 or 'username' not in request.params:
             return 'GET pickle/user/id requires the parameter "username"', 400
         
-        username = self.check_str(request.params['username'])
+        username = request.params['username']
+        if not self.check_username(username):
+            return f'Invalid username {request.params['username']}', 400
+        
         # TODO: password authentication
         
         self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))

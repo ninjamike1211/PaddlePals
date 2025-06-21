@@ -35,18 +35,23 @@ def test_user_admin(tmp_path):
     
     request = api.APIRequest('GET', 'user', {'user_id':'0'})
     user, code = api.api_user(request)
-    assert user == 'User ID 0 is not a valid user'
+    assert type(user) is str
     assert code == 404
 
     request = api.APIRequest('PUT', 'user', {'user_id':'0', 'username':'notAdmin'})
     result, code = api.api_user(request)
-    assert result == 'User ID 0 is not a valid user'
+    assert type(result) is str
     assert code == 404
 
     request = api.APIRequest('DELETE', 'user', {'user_id':'0'})
     result, code = api.api_user(request)
-    assert result == 'User ID 0 is not a valid user'
+    assert type(result) is str
     assert code == 404
+    
+    request = api.APIRequest('GET', 'user_id', {'username':'admin'})
+    user, code = api.api_user_id(request)
+    assert type(user) is str
+    assert code == 400
 
 
 
@@ -74,6 +79,25 @@ def test_create_user(tmp_path):
     assert code == 200
 
 
+def test_create_bad_users(tmp_path):
+    api = setup_api(tmp_path, users={'testUser':'testPass'})
+
+    request = api.APIRequest('POST', 'user', {'username':'admin', 'password':'testPass'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 400
+
+    request = api.APIRequest('POST', 'user', {'username':'deleted_user', 'password':'testPass'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 400
+
+    request = api.APIRequest('POST', 'user', {'username':'testUser', 'password':'differentTestPass'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 403
+
+
 def test_delete_user(tmp_path):
     api = setup_api(tmp_path, users={'testUser':'testPass'})
 
@@ -89,22 +113,27 @@ def test_delete_user(tmp_path):
 
     request = api.APIRequest('GET', 'user', {'user_id':'1'})
     result, code = api.api_user(request)
-    assert result == 'User ID 1 is not a valid user'
+    assert type(result) is str
     assert code == 404
 
     request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'name'})
     result, code = api.api_user(request)
-    assert result == 'User ID 1 is not a valid user'
+    assert type(result) is str
     assert code == 404
 
     request = api.APIRequest('GET', 'user_id', {'username':'testUser'})
     result, code = api.api_user_id(request)
-    assert result == 'Username not found: testUser'
+    assert type(result) is str
     assert code == 404
+
+    request = api.APIRequest('GET', 'user_id', {'username':'deleted_user'})
+    result, code = api.api_user_id(request)
+    assert type(result) is str
+    assert code == 400
 
     request = api.APIRequest('GET', 'user_games', {'user_id':'1'})
     result, code = api.api_user_games(request)
-    assert result == 'User ID 1 is not a valid user'
+    assert type(result) is str
     assert code == 404
 
     api.cursor.execute("SELECT * FROM users WHERE user_id=1")
@@ -113,7 +142,7 @@ def test_delete_user(tmp_path):
 
 
 def test_modify_username(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass'})
+    api = setup_api(tmp_path, users={'testUser':'testPass', 'testUser2':'electricBoogaloo'})
 
     request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'username'})
     result, code = api.api_user(request)
@@ -129,6 +158,21 @@ def test_modify_username(tmp_path):
     result, code = api.api_user(request)
     assert result == ('differentName',)
     assert code == 200
+
+    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'admin'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 400
+
+    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'deleted_user'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 400
+
+    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'testUser2'})
+    result, code = api.api_user(request)
+    assert type(result) is str
+    assert code == 403
 
 def test_post_game(tmp_path):
     api = setup_api(tmp_path, users={'userA':'passwordA', 'userB':'passwordB'})
