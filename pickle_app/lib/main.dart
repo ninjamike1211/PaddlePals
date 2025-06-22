@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 void main() {
@@ -6,6 +7,57 @@ void main() {
 }
 
 class User {
+  // final int userId;
+  final String username;
+  // final String passwordHash;
+  // final int valid;
+  final int gamesPlayed;
+  final int gamesWon;
+  final double avgScore;
+
+  User({
+    // required this.userId,
+    required this.username,
+    // required this.passwordHash,
+    // required this.valid,
+    required this.gamesPlayed,
+    required this.gamesWon,
+    required this.avgScore
+  });
+}
+
+class DataService{
+  static final DataService _instance = DataService._internal();
+  factory DataService() => _instance;
+  DataService._internal();
+
+  List<User>? _cachedData;
+
+  Future<List<User>> getRequest() async {
+    if (_cachedData != null) return _cachedData!;
+
+    String url = "http://localhost:8080/pickle/user?user_id=3";
+
+    final response = await http.get(Uri.parse(url));
+
+    var responseData = json.decode(response.body);
+
+    List<User> usersList = [];
+    for(var singleUser in responseData){
+      User user = User(
+        // userId: singleUser["user_id"], //check what the names are in the database
+          username: singleUser["username"],
+          // passwordHash: singleUser["passwordHash"],
+          // valid: singleUser["valid"],
+          gamesPlayed: singleUser["gamesPlayed"],
+          gamesWon: singleUser["gamesWon"],
+          avgScore: singleUser["averageScore"]
+      );
+      usersList.add(user);
+    }
+    _cachedData = usersList;
+    return usersList;
+  }
 
 }
 
@@ -55,6 +107,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
 
   var selectedIndex = 0;
+
 
   @override
   Widget build(BuildContext context) {
@@ -142,8 +195,13 @@ class SocialPage extends StatelessWidget{
       appBar: AppBar(
         title: const Text('My Pals'),
       ),
-      body: const Center(
-        child: Text('Placeholder'),
+      body: Center(
+        child: Container( //PUT LIST OF FRIENDS
+          width: 100,
+          height: 100,
+          color: Colors.blue,
+          child: Text('Hello'),
+        ),
       ),
     );
   }
@@ -158,9 +216,24 @@ class HistoryPage extends StatelessWidget{
       appBar: AppBar(
         title: const Text('History'),
       ),
-      body: const Center(
-        child: Text('Placeholder'),
-      ),
+      body: Center(
+        child: FutureBuilder<List<User>>(
+            future: DataService().getRequest(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const CircularProgressIndicator();
+              } else if (snapshot.hasError) {
+                return Text('Error: ${snapshot.error}');
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Text('No user data available');
+              }
+
+              final user = snapshot.data![0]; // get the first user
+
+              return Text('Username: ${user.username}');
+            },
+        ), //FutureBuilder
+      ), //Center
     );
   }
 }
