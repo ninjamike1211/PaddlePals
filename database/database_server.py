@@ -4,6 +4,7 @@ from database_api import restAPI
 class DatabaseServer(BaseHTTPRequestHandler):
 
     def pickle_handle_request(self):
+
         print(f'{self.command} {self.path}')
 
         try:
@@ -33,7 +34,9 @@ class DatabaseServer(BaseHTTPRequestHandler):
         return self.pickle_handle_request()
 
 pickleAPI = restAPI()
+
 httpd = HTTPServer(('',80),DatabaseServer)
 
 print('PicklePals server started, now listening for incoming requests')
+
 httpd.serve_forever()
