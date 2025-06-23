@@ -223,7 +223,7 @@ class restAPI:
         
         username = request.params['username']
         if not self.check_username(username):
-            return f'Invalid username {request.params['username']}', 400
+            return f'Invalid username {username}', 400
         
         # TODO: password authentication
         
