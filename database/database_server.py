@@ -21,9 +21,6 @@ class DatabaseServer(BaseHTTPRequestHandler):
         except Exception as error:
             self.send_error(400, f'Error: {error}')
 
-        finally:
-            self.close_connection()
-
     def do_GET(self):
         return self.pickle_handle_request()
 
