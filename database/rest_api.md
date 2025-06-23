@@ -14,21 +14,27 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: The user_id of the account to query data from
     - `objects` *(optinoal)*: A comma separated, spaceless list of values to query from the database. The following are recognized parameters: `username`, `gamesPlayed`, `gamesWon`, `averageScore`
 
+    **returns**: list of comma separated values or ({username}, {gamesPlayed}, {gamesWon}, {averageScore})
+
 - `PUT pickle/user`
     ---
     Used to modify user data, such as username. For each value to modify, include a parameter of that value's name and its new value.
 
     **params**:
     - `user_id`: The user_id of the account to modify data
-    - `username` *(optional*):
+    - `username` *(optional*): value to set the username
+
+    **returns**: True
 
 - `POST pickle/user`
     ---
     Creates a user account in the database with a given username and password.
 
     **params**:
-    - `username`:
-    - `password`:
+    - `username`: username for new user
+    - `password`: password for new user
+
+    **returns**: {user_id}
 
 - `DELETE pickle/user`
     ---
@@ -36,7 +42,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **params**:
     - `user_id`: the user ID of the account to delete.
-    - `password`: requires password in addition to apiKey for additional authentication
+
+    **returns**: True
 
 - `GET pickle/user/id`
     ---
@@ -45,6 +52,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `username`: the username of the user to request ID for
 
+    **returns**: {user_id}
+
 - `GET pickle/user/friends`
     ---
     Returns a list of users who the current user is friends with.
@@ -52,6 +61,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: the user ID to query list of friends from
     - `include_username` *(optional)*: if this is set to `true`, the returned value will include a list of usernames as well
+
+    **returns**: [{friend_id}, ...] **or** [({friend_id}, {username})]
 
 - `POST pickle/user/friends`
     ---
@@ -62,6 +73,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `friend_id` *(optional)*: user ID of the friend to add to friends list
     - `friend_username` *(optional)*: username of the friend to add to friends list
 
+    **returns**: True
+
 - `DELETE pickle/user/friends`
     ---
     Removes a friend from the user's friend list, specified using the friends user ID (`friend_id`).
@@ -69,6 +82,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: user ID of the current user
     - `friend_id`: user ID of the friend to remove from friends list
+
+    **returns**: True
 
 - `GET pickle/user/games`
     ---
@@ -78,6 +93,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
 
+    **returns**: [{game_id}, ...]
+
 - `GET pickle/user/auth`
     ---
     Authenticates using a username and password, returns an API token for accessing user account data.
@@ -86,6 +103,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `username`: account username
     - `password`: account password
 
+    **returns**: True
+
 ## pickle/game
 - `GET pickle/game`
     ---
@@ -93,6 +112,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **params**:
     - `game_id`: the game ID of the game to request
+
+    **returns**: ({game_id}, {winner_id}, {loser_id}, {winner_points}, {loser_points})
 
 - `POST pickle/game`
     ---
@@ -103,3 +124,5 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `loser_id`: user ID of the losing played
     - `winner_points`: the number of points scored by the winning player
     - `loser_points`: the number of points scored by the losing player
+
+    **returns**: {game_id}

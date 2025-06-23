@@ -1,5 +1,7 @@
+import os
 import sqlite3
 import hashlib
+import json
 from dataclasses import dataclass
 
 class restAPI:
@@ -42,14 +44,40 @@ class restAPI:
         
         except ValueError as error:
             raise self.ValidationError(val, 'float')
+        
+    def check_username(self, username: str):
+        return username not in ('admin', 'deleted_user')
+    
+    def is_username_existing(self, username: str):
+        self.cursor.execute("SELECT username FROM users WHERE username=?", (username,))
+        return self.cursor.fetchone() is not None
 
-    def gen_password_hash(self, password:str):
-        return bytearray(hashlib.sha256(password.encode()).digest())
+    @staticmethod
+    def gen_password_hash(password:str):
+        salt = bytearray(os.urandom(16))
+        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return hash, salt
+    
+    def check_password(self, username:str, password:str):
+        self.cursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        data = self.cursor.fetchone()
+        if not data:
+            return False
+
+        dbHash = data[0]
+        salt = data[1]
+        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return userHash == dbHash
         
     def is_user_valid(self, user_id):
         self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self.cursor.fetchone()
         return valid and valid[0]
+    
+    def is_user_deleted(self, user_id):
+        self.cursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+        deleted = self.cursor.fetchone()
+        return deleted and deleted[0] == 'deleted_user'
 
 
     def decode_request(self, request_type, request:str):
@@ -100,26 +128,25 @@ class restAPI:
                 return f'Invalid parameters for GET pickle/user, must include user ID: {request.params}', 405
             
             user_id = self.check_int(request.params['user_id'])
+
+            if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
+                return f'User ID {user_id} is not a valid user', 404
             
             if 'objects' in request.params:
                 objects = request.params['objects'].split(',')
-                get_objects = ''
-
-                for i, object in enumerate(objects):
-                    if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
-                        get_objects += object
-                        if i < len(objects)-1:
-                            get_objects += ','
-
-                    else:
-                        return f'ERROR: invalid object requested: {object}', 400
-        
             else:
-                get_objects = 'username,gamesPlayed,gamesWon,averageScore'
+                objects = ['username', 'gamesPlayed', 'gamesWon', 'averageScore']
 
-            self.cursor.execute(f"SELECT {get_objects} FROM users WHERE user_id=?", (user_id,))
-            result = self.cursor.fetchone()
-            return result, 200
+            results = {}
+            for object in objects:
+                if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
+                    self.cursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
+                    results[object] = self.cursor.fetchone()[0]
+
+                else:
+                    return f'ERROR: invalid object requested: {object}', 400
+
+            return json.dumps(results), 200
         
         elif request.type == 'PUT':
             if 'user_id' not in request.params:
@@ -134,13 +161,19 @@ class restAPI:
             for param, val in request.params.items():
 
                 if param == 'username':
-                    self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (self.check_str(val), user_id))
+                    if not self.check_username(val):
+                        return f'Invalid username {val}', 400
+                    
+                    if self.is_username_existing(val):
+                        return f'Username {val} already exists', 403
+
+                    self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
 
                 elif param != 'user_id':
                     print(f'Invalid object parameter: {param}={val}')
 
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
         
         elif request.type == 'POST':
             if 'username' not in request.params or 'password' not in request.params:
@@ -151,14 +184,20 @@ class restAPI:
             # TODO: password authentication
             # TODO: check that username doesn't already exist
 
-            pass_hash = self.gen_password_hash(password)
+            if not self.check_username(username):
+                return f'Invalid username {username}', 400
+            
+            if self.is_username_existing(username):
+                return f'Username {username} already exists', 403
+
+            pass_hash, salt = self.gen_password_hash(password)
 
             self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
             user_id = self.cursor.fetchone()[0] + 1
 
-            self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash))
+            self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
             self.dbCon.commit()
-            return user_id, 200
+            return json.dumps({'user_id':user_id}), 200
         
         elif request.type == 'DELETE':
             if 'user_id' not in request.params:
@@ -170,9 +209,9 @@ class restAPI:
             if not self.is_user_valid(user_id):
                 return f'User ID {user_id} is not a valid user', 404
 
-            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, valid=0, gamesPlayed=0, gamesWon=0, averageScore=0.0 WHERE user_id=?", (user_id,))
+            self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
     
     def api_user_id(self, request: APIRequest):
@@ -182,14 +221,17 @@ class restAPI:
         if len(request.params) != 1 or 'username' not in request.params:
             return 'GET pickle/user/id requires the parameter "username"', 400
         
-        username = self.check_str(request.params['username'])
+        username = request.params['username']
+        if not self.check_username(username):
+            return f'Invalid username {request.params['username']}', 400
+        
         # TODO: password authentication
         
         self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
         userId = self.cursor.fetchone()
 
         if userId:
-            return userId[0], 200
+            return json.dumps({'user_id':userId[0]}), 200
         
         else:
             return f'Username not found: {username}', 404
@@ -213,10 +255,16 @@ class restAPI:
                     self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
                     username_list.append(self.cursor.fetchone()[0])
 
-                return [(friend_list[i][0], username_list[i]) for i in range(0, len(friend_list))], 200
+                result = []
+                for i in range(0, len(friend_list)):
+                    result.append({'user_id':friend_list[i][0], 'username':username_list[i]})
             
             else:
-                return [id[0] for id in friend_list], 200
+                result = []
+                for id in friend_list:
+                    result.append({'user_id':id[0]})
+            
+            return json.dumps(result), 200
 
         elif request.type == 'POST':
             if 'friend_id' in request.params:
@@ -239,7 +287,7 @@ class restAPI:
             
             self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
         elif request.type == 'DELETE':
             if 'friend_id' not in request.params:
@@ -252,7 +300,7 @@ class restAPI:
             
             self.cursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
         else:
             return f'pickle/user/friends does not support command "{request.type}"', 405
@@ -281,7 +329,8 @@ class restAPI:
             self.cursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
 
         games_list = self.cursor.fetchall()
-        return games_list, 200
+        result = {'game_ids': [game[0] for game in games_list]}
+        return json.dumps(result), 200
         
     
     def api_user_auth(self, request: APIRequest):
@@ -294,14 +343,9 @@ class restAPI:
         username = self.check_str(request.params['username'])
         password = self.check_str(request.params['password'])
 
-        pass_hash = self.gen_password_hash(password)
-
-        self.cursor.execute("SELECT passwordHash FROM users WHERE username=?", (username,))
-        real_hash = self.cursor.fetchone()
-
-        if real_hash and pass_hash == real_hash[0]:
+        if self.check_password(username, password):
             print(f'Authentication successful for user {username}')
-            return True, 200
+            return json.dumps({'success':True}), 200
         
         else:
             return f'Authentication failed for user {username}', 401
@@ -316,7 +360,12 @@ class restAPI:
             
             self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
             game = self.cursor.fetchone()
-            return game, 200
+
+            if not game:
+                return f'Game for game_id {game_id} not found', 404
+
+            result = {'game_id':game[0], 'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
+            return json.dumps(result), 200
             
 
         elif request.type == 'POST':
@@ -335,17 +384,21 @@ class restAPI:
                 return f'User ID {loser_id} is not a valid user', 404
 
             self.cursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
-            gameId = self.cursor.fetchone()[0] + 1
+            game_id_raw = self.cursor.fetchone()
+            if game_id_raw:
+                game_id = game_id_raw[0] + 1
+            else:
+                game_id = 0
 
             self.cursor.execute(
                 "INSERT INTO games VALUES (?, ?, ?, ?, ?)",
-                (gameId, winner_id, loser_id, winner_points, loser_points))
+                (game_id, winner_id, loser_id, winner_points, loser_points))
             self.dbCon.commit()
 
             self.updateUserGameStats(winner_id)
             self.updateUserGameStats(loser_id)
 
-            return gameId, 200
+            return json.dumps({'game_id':game_id}), 200
 
         else:
             return f'ERROR: Endpoint pickle/game does not support request type {request.type}', 405
@@ -362,7 +415,7 @@ class restAPI:
         self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
         gamesPlayed = self.cursor.fetchone()[0]
 
-        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=', (user_id,))
+        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=?', (user_id,))
         gamesWon = self.cursor.fetchone()[0]
 
         self.cursor.execute('SELECT AVG(CASE WHEN winner_id=? THEN winner_points ELSE loser_points END) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id, user_id))
