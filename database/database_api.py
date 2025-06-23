@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import hashlib
-import json
 from dataclasses import dataclass
 
 class restAPI:
@@ -146,7 +145,7 @@ class restAPI:
                 else:
                     return f'ERROR: invalid object requested: {object}', 400
 
-            return json.dumps(results), 200
+            return results, 200
         
         elif request.type == 'PUT':
             if 'user_id' not in request.params:
@@ -173,7 +172,7 @@ class restAPI:
                     print(f'Invalid object parameter: {param}={val}')
 
             self.dbCon.commit()
-            return json.dumps({'success':True}), 200
+            return {'success':True}, 200
         
         elif request.type == 'POST':
             if 'username' not in request.params or 'password' not in request.params:
@@ -197,7 +196,7 @@ class restAPI:
 
             self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
             self.dbCon.commit()
-            return json.dumps({'user_id':user_id}), 200
+            return {'user_id':user_id}, 200
         
         elif request.type == 'DELETE':
             if 'user_id' not in request.params:
@@ -211,7 +210,7 @@ class restAPI:
 
             self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
             self.dbCon.commit()
-            return json.dumps({'success':True}), 200
+            return {'success':True}, 200
 
     
     def api_user_id(self, request: APIRequest):
@@ -231,7 +230,7 @@ class restAPI:
         userId = self.cursor.fetchone()
 
         if userId:
-            return json.dumps({'user_id':userId[0]}), 200
+            return {'user_id':userId[0]}, 200
         
         else:
             return f'Username not found: {username}', 404
@@ -264,7 +263,7 @@ class restAPI:
                 for id in friend_list:
                     result.append({'user_id':id[0]})
             
-            return json.dumps(result), 200
+            return result, 200
 
         elif request.type == 'POST':
             if 'friend_id' in request.params:
@@ -287,7 +286,7 @@ class restAPI:
             
             self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
             self.dbCon.commit()
-            return json.dumps({'success':True}), 200
+            return {'success':True}, 200
 
         elif request.type == 'DELETE':
             if 'friend_id' not in request.params:
@@ -300,7 +299,7 @@ class restAPI:
             
             self.cursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
             self.dbCon.commit()
-            return json.dumps({'success':True}), 200
+            return {'success':True}, 200
 
         else:
             return f'pickle/user/friends does not support command "{request.type}"', 405
@@ -330,7 +329,7 @@ class restAPI:
 
         games_list = self.cursor.fetchall()
         result = {'game_ids': [game[0] for game in games_list]}
-        return json.dumps(result), 200
+        return result, 200
         
     
     def api_user_auth(self, request: APIRequest):
@@ -345,7 +344,7 @@ class restAPI:
 
         if self.check_password(username, password):
             print(f'Authentication successful for user {username}')
-            return json.dumps({'success':True}), 200
+            return {'success':True}, 200
         
         else:
             return f'Authentication failed for user {username}', 401
@@ -365,7 +364,7 @@ class restAPI:
                 return f'Game for game_id {game_id} not found', 404
 
             result = {'game_id':game[0], 'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
-            return json.dumps(result), 200
+            return result, 200
             
 
         elif request.type == 'POST':
@@ -398,7 +397,7 @@ class restAPI:
             self.updateUserGameStats(winner_id)
             self.updateUserGameStats(loser_id)
 
-            return json.dumps({'game_id':game_id}), 200
+            return {'game_id':game_id}, 200
 
         else:
             return f'ERROR: Endpoint pickle/game does not support request type {request.type}', 405

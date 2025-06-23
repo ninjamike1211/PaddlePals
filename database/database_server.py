@@ -1,4 +1,6 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+
 from database_api import restAPI
 
 class DatabaseServer(BaseHTTPRequestHandler):
@@ -14,7 +16,7 @@ class DatabaseServer(BaseHTTPRequestHandler):
                 self.send_response(code)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(bytes(str(response), 'utf-8'))
+                self.wfile.write(bytes(json.dumps(response), 'utf-8'))
             else:
                 self.send_error(code, str(response))
 
