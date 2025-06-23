@@ -146,7 +146,7 @@ class restAPI:
                 else:
                     return f'ERROR: invalid object requested: {object}', 400
 
-            return results, 200
+            return json.dumps(results), 200
         
         elif request.type == 'PUT':
             if 'user_id' not in request.params:
@@ -231,7 +231,7 @@ class restAPI:
         userId = self.cursor.fetchone()
 
         if userId:
-            return userId[0], 200
+            return json.dumps({'user_id':userId[0]}), 200
         
         else:
             return f'Username not found: {username}', 404
@@ -255,10 +255,17 @@ class restAPI:
                     self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
                     username_list.append(self.cursor.fetchone()[0])
 
-                return [(friend_list[i][0], username_list[i]) for i in range(0, len(friend_list))], 200
+                result = []
+                for i in range(0, len(friend_list)):
+                    result.append({'user_id':friend_list[i][0], 'username':username_list[i]})
+                # return [(friend_list[i][0], username_list[i]) for i in range(0, len(friend_list))], 200
             
             else:
-                return [id[0] for id in friend_list], 200
+                result = []
+                for id in friend_list:
+                    result.append({'user_id':id[0]})
+            
+            return json.dumps(result), 200
 
         elif request.type == 'POST':
             if 'friend_id' in request.params:
@@ -323,7 +330,8 @@ class restAPI:
             self.cursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
 
         games_list = self.cursor.fetchall()
-        return [game[0] for game in games_list], 200
+        result = {'game_ids': [game[0] for game in games_list]}
+        return json.dumps(result), 200
         
     
     def api_user_auth(self, request: APIRequest):
@@ -357,7 +365,8 @@ class restAPI:
             if not game:
                 return f'Game for game_id {game_id} not found', 404
 
-            return game, 200
+            result = {'game_id':game[0], 'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
+            return json.dumps(result), 200
             
 
         elif request.type == 'POST':
