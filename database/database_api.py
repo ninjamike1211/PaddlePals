@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import json
 from dataclasses import dataclass
 
 class restAPI:
@@ -133,23 +134,19 @@ class restAPI:
             
             if 'objects' in request.params:
                 objects = request.params['objects'].split(',')
-                get_objects = ''
-
-                for i, object in enumerate(objects):
-                    if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
-                        get_objects += object
-                        if i < len(objects)-1:
-                            get_objects += ','
-
-                    else:
-                        return f'ERROR: invalid object requested: {object}', 400
-        
             else:
-                get_objects = 'username,gamesPlayed,gamesWon,averageScore'
+                objects = ['username', 'gamesPlayed', 'gamesWon', 'averageScore']
 
-            self.cursor.execute(f"SELECT {get_objects} FROM users WHERE user_id=?", (user_id,))
-            result = self.cursor.fetchone()
-            return result, 200
+            results = {}
+            for object in objects:
+                if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
+                    self.cursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
+                    results[object] = self.cursor.fetchone()[0]
+
+                else:
+                    return f'ERROR: invalid object requested: {object}', 400
+
+            return results, 200
         
         elif request.type == 'PUT':
             if 'user_id' not in request.params:
