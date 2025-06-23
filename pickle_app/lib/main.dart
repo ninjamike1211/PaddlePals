@@ -24,7 +24,54 @@ class User {
     required this.gamesWon,
     required this.avgScore
   });
+
+  factory User.fromJson(Map<String, dynamic> json){
+    return User(
+      username: json['username'],
+      gamesPlayed: json['gamesPlayed'],
+      gamesWon: json['gamesWon'],
+      avgScore: json['averageScore']
+    );
+  }
 }
+
+
+class MyTextEntryWidget extends StatefulWidget {
+  @override
+  _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
+}
+
+class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
+  final TextEditingController _controller = TextEditingController();
+
+  void _printInput() {
+    print("Entered: ${_controller.text}");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              labelText: 'Enter username',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _printInput,
+            child: const Text('Create'),
+          )
+        ],
+      ),
+    );
+  }
+}
+
 
 class DataService{
   static final DataService _instance = DataService._internal();
@@ -34,29 +81,33 @@ class DataService{
   List<User>? _cachedData;
 
   Future<List<User>> getRequest() async {
-    if (_cachedData != null) return _cachedData!;
+    final url = Uri.parse("http://10.6.27.99:80/pickle/user?user_id=1");
+    final response = await http.get(url);
 
-    String url = "http://localhost:8080/pickle/user?user_id=3";
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
 
-    final response = await http.get(Uri.parse(url));
+    if (response.statusCode == 200) {
+      final body = response.body;
 
-    var responseData = json.decode(response.body);
+      try {
+        final jsonData = json.decode(body);
 
-    List<User> usersList = [];
-    for(var singleUser in responseData){
-      User user = User(
-        // userId: singleUser["user_id"], //check what the names are in the database
-          username: singleUser["username"],
-          // passwordHash: singleUser["passwordHash"],
-          // valid: singleUser["valid"],
-          gamesPlayed: singleUser["gamesPlayed"],
-          gamesWon: singleUser["gamesWon"],
-          avgScore: singleUser["averageScore"]
-      );
-      usersList.add(user);
+        if (jsonData is Map<String, dynamic>) {
+          // single user object
+          return [User.fromJson(jsonData)];
+        } else if (jsonData is List) {
+          // list of user objects
+          return jsonData.map<User>((item) => User.fromJson(item)).toList();
+        } else {
+          throw FormatException('Unexpected JSON format');
+        }
+      } catch (e) {
+        throw FormatException('Error decoding response: $e');
+      }
+    } else {
+      throw Exception('Failed to fetch data: ${response.statusCode}');
     }
-    _cachedData = usersList;
-    return usersList;
   }
 
 }
@@ -122,6 +173,9 @@ class _MyHomePageState extends State<MyHomePage> {
       case 2:
         page = HistoryPage();
         break;
+      case 3:
+        page = newUserPage();
+        break;
       default:
         throw UnimplementedError('no widget for $selectedIndex');
     }
@@ -147,6 +201,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         icon: Icon(Icons.history),
                         label: Text('History'),
                       ),
+                      NavigationRailDestination(
+                          icon: Icon(Icons.add),
+                          label: Text('Add User'))
                     ],
                     selectedIndex: selectedIndex,
                     onDestinationSelected: (value) {
@@ -223,6 +280,7 @@ class HistoryPage extends StatelessWidget{
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const CircularProgressIndicator();
               } else if (snapshot.hasError) {
+                //formatting error here
                 return Text('Error: ${snapshot.error}');
               } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const Text('No user data available');
@@ -234,6 +292,26 @@ class HistoryPage extends StatelessWidget{
             },
         ), //FutureBuilder
       ), //Center
+    );
+  }
+}
+
+class newUserPage extends StatelessWidget{
+  const newUserPage({super.key});
+
+  @override
+  Widget build(BuildContext context){
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add User'),
+      ),
+      body: Center(
+        child: Column(
+          children: [
+            MyTextEntryWidget(),
+          ],
+        ),
+      ),
     );
   }
 }
