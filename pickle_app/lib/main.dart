@@ -72,24 +72,21 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
   }
 }
 
+/*
+CLASS FOR ALL API REQUESTS
+ */
+class APIRequests {
+  final String url = "http://10.6.27.99:80";
 
-class DataService{
-  static final DataService _instance = DataService._internal();
-  factory DataService() => _instance;
-  DataService._internal();
+  //GET REQUEST
+  Future<List<User>> getRequest(String endpoint) async {
+    final response = await http.get(Uri.parse('$url$endpoint'));
 
-  List<User>? _cachedData;
-
-  Future<List<User>> getRequest() async {
-    final url = Uri.parse("http://10.6.27.99:80/pickle/user?user_id=1");
-    final response = await http.get(url);
-
-    print("Status: ${response.statusCode}");
-    print("Body: ${response.body}");
-
-    if (response.statusCode == 200) {
+    //success
+    if(response.statusCode == 200){
       final body = response.body;
 
+      //format into List<User> and check JSON decoding
       try {
         final jsonData = json.decode(body);
 
@@ -105,12 +102,31 @@ class DataService{
       } catch (e) {
         throw FormatException('Error decoding response: $e');
       }
-    } else {
-      throw Exception('Failed to fetch data: ${response.statusCode}');
+    }
+    else{
+      throw Exception('GET request FAILED: ${response.statusCode}');
     }
   }
 
+  Future<dynamic> postRequest(String endpoint, Map<String, dynamic> data) async {
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(data),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}');
+    }
+  }
 }
+
+final api = APIRequests();
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -275,7 +291,7 @@ class HistoryPage extends StatelessWidget{
       ),
       body: Center(
         child: FutureBuilder<List<User>>(
-            future: DataService().getRequest(),
+            future: api.getRequest("/pickle/user?user_id=1"),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const CircularProgressIndicator();
