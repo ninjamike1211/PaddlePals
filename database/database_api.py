@@ -173,7 +173,7 @@ class restAPI:
                     print(f'Invalid object parameter: {param}={val}')
 
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
         
         elif request.type == 'POST':
             if 'username' not in request.params or 'password' not in request.params:
@@ -197,7 +197,7 @@ class restAPI:
 
             self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
             self.dbCon.commit()
-            return user_id, 200
+            return json.dumps({'user_id':user_id}), 200
         
         elif request.type == 'DELETE':
             if 'user_id' not in request.params:
@@ -211,7 +211,7 @@ class restAPI:
 
             self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
     
     def api_user_id(self, request: APIRequest):
@@ -258,7 +258,6 @@ class restAPI:
                 result = []
                 for i in range(0, len(friend_list)):
                     result.append({'user_id':friend_list[i][0], 'username':username_list[i]})
-                # return [(friend_list[i][0], username_list[i]) for i in range(0, len(friend_list))], 200
             
             else:
                 result = []
@@ -288,7 +287,7 @@ class restAPI:
             
             self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
         elif request.type == 'DELETE':
             if 'friend_id' not in request.params:
@@ -301,7 +300,7 @@ class restAPI:
             
             self.cursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
             self.dbCon.commit()
-            return True, 200
+            return json.dumps({'success':True}), 200
 
         else:
             return f'pickle/user/friends does not support command "{request.type}"', 405
@@ -346,7 +345,7 @@ class restAPI:
 
         if self.check_password(username, password):
             print(f'Authentication successful for user {username}')
-            return True, 200
+            return json.dumps({'success':True}), 200
         
         else:
             return f'Authentication failed for user {username}', 401
@@ -399,7 +398,7 @@ class restAPI:
             self.updateUserGameStats(winner_id)
             self.updateUserGameStats(loser_id)
 
-            return game_id, 200
+            return json.dumps({'game_id':game_id}), 200
 
         else:
             return f'ERROR: Endpoint pickle/game does not support request type {request.type}', 405

@@ -12,6 +12,7 @@ class DatabaseServer(BaseHTTPRequestHandler):
 
             if code == 200:
                 self.send_response(code)
+                self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 self.wfile.write(bytes(str(response), 'utf-8'))
             else:
@@ -19,6 +20,9 @@ class DatabaseServer(BaseHTTPRequestHandler):
 
         except Exception as error:
             self.send_error(400, f'Error: {error}')
+
+        finally:
+            self.close_connection()
 
     def do_GET(self):
         return self.pickle_handle_request()
