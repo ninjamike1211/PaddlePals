@@ -33,50 +33,22 @@ class User {
       avgScore: json['averageScore']
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'username': username,
+    'gamesPlayed': gamesPlayed,
+    'gamesWon': gamesWon,
+    'averageScore': avgScore
+  };
 }
 
-
-class MyTextEntryWidget extends StatefulWidget {
-  @override
-  _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
-}
-
-class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
-  final TextEditingController _controller = TextEditingController();
-
-  void _printInput() {
-    print("Entered: ${_controller.text}");
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          TextField(
-            controller: _controller,
-            decoration: InputDecoration(
-              labelText: 'Enter username',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _printInput,
-            child: const Text('Create'),
-          )
-        ],
-      ),
-    );
-  }
-}
+List<User> usersList = [];
 
 /*
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.6.27.99:80";
+  final String url = "http://10.5.105.211:80";
 
   //GET REQUEST
   Future<List<User>> getRequest(String endpoint) async {
@@ -108,25 +80,97 @@ class APIRequests {
     }
   }
 
-  Future<dynamic> postRequest(String endpoint, Map<String, dynamic> data) async {
+  Future<dynamic> postNewUserRequest(String un, String pw) async {
+    print(un);
+    print(pw);
+    Map<String, String> newUser = {
+      'username': un.trim(),
+      'password': pw.trim(),
+    };
+
+    print(newUser);
+    String endpoint = "/pickle/user";
+
+
     final response = await http.post(
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
       },
-      body: json.encode(data),
+      body: json.encode(newUser),
     );
+
+    print("Sent JSON: ${jsonEncode(newUser)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
 
     if (response.statusCode == 200 || response.statusCode == 201){
       return json.decode(response.body);
     }
     else{
-      throw Exception('POST request failed: ${response.statusCode}');
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
     }
   }
 }
 
 final api = APIRequests();
+
+class MyTextEntryWidget extends StatefulWidget {
+  @override
+  _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
+}
+
+class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
+  final TextEditingController _controller1 = TextEditingController();
+  final TextEditingController _controller2 = TextEditingController();
+
+  _createNewUser(String userName, String password) {
+    // final newUser = User(
+    //   username: newName,
+    //   gamesPlayed: 0,
+    //   gamesWon: 0,
+    //   avgScore: 0
+    // );
+
+    // usersList.add(newUser);
+
+    api.postNewUserRequest(userName, password);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          TextField(
+            controller: _controller1,
+            decoration: InputDecoration(
+              labelText: 'Enter username',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          TextField(
+            controller: _controller2,
+            decoration: InputDecoration(
+              labelText: 'Enter password',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: (){
+              _createNewUser(_controller1.text, _controller2.text);
+            },
+            child: const Text('Create'),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -312,8 +356,14 @@ class HistoryPage extends StatelessWidget{
   }
 }
 
-class newUserPage extends StatelessWidget{
+class newUserPage extends StatefulWidget{
   const newUserPage({super.key});
+
+  @override
+  State<newUserPage> createState() => _newUserPageState();
+}
+
+class _newUserPageState extends State<newUserPage> {
 
   @override
   Widget build(BuildContext context){
