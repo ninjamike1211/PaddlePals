@@ -9,7 +9,14 @@ class DatabaseServer(BaseHTTPRequestHandler):
         print(f'{self.command} {self.path}')
 
         try:
-            response, code = pickleAPI.handle_request(self.command, self.path)
+            body_length = int(self.headers['Content-Length'])
+            body = self.rfile.read(body_length)
+            print(body)
+
+            params = json.loads(body.decode('utf-8'))
+            print(params)
+
+            response, code = pickleAPI.handle_request(self.path, params)
             print(response, code)
 
             if code == 200:
