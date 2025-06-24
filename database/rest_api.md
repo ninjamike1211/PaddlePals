@@ -6,7 +6,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     
 
 ## pickle/user
-- `GET pickle/user`
+- `pickle/user/get`
     ---
     Retrieves data about a specific user, specifically notated by user_id. By default, all accessible user data will be returned, but the `objects` parameter can be used to query for specific values.
 
@@ -16,7 +16,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: list of comma separated values or ({username}, {gamesPlayed}, {gamesWon}, {averageScore})
 
-- `PUT pickle/user`
+- `pickle/user/set`
     ---
     Used to modify user data, such as username. For each value to modify, include a parameter of that value's name and its new value.
 
@@ -26,7 +26,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: True
 
-- `POST pickle/user`
+- `pickle/user/create`
     ---
     Creates a user account in the database with a given username and password.
 
@@ -36,7 +36,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: {user_id}
 
-- `DELETE pickle/user`
+- `pickle/user/delete`
     ---
     Deletes a user account from the database. This does not remove the user ID, but instead removes the user data (games played/won, average score, etc), removes their password hash, and replaces their username with "deleted_user". All game records which this user participated in will remain in the database, with their user_id returning the "deleted_user" username, and with no other data accessible.
 
@@ -45,7 +45,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: True
 
-- `GET pickle/user/id`
+- `pickle/user/id`
     ---
     Returns a user ID used by the database for a given username, if the request sender has permission to view the requested user.
 
@@ -54,7 +54,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: {user_id}
 
-- `GET pickle/user/friends`
+- `pickle/user/friends`
     ---
     Returns a list of users who the current user is friends with.
 
@@ -64,7 +64,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: [{friend_id}, ...] **or** [({friend_id}, {username})]
 
-- `POST pickle/user/friends`
+- `pickle/user/addFriend`
     ---
     Adds a friend to the user's friend list. The friend to add is specified with either their user ID (`friend_id`), or their username (`friend_username`). Only one of these may be included in the request.
 
@@ -75,7 +75,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: True
 
-- `DELETE pickle/user/friends`
+- `pickle/user/removeFriend`
     ---
     Removes a friend from the user's friend list, specified using the friends user ID (`friend_id`).
 
@@ -85,7 +85,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: True
 
-- `GET pickle/user/games`
+- `pickle/user/games`
     ---
     Returns a list of game IDs for which the given user (by user ID) has participated in. Optionally, the `won` parameter can be used to filter for games that the user either won or lost.
 
@@ -95,7 +95,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: [{game_id}, ...]
 
-- `GET pickle/user/auth`
+- `pickle/user/auth`
     ---
     Authenticates using a username and password, returns an API token for accessing user account data.
 
@@ -106,7 +106,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**: True
 
 ## pickle/game
-- `GET pickle/game`
+- `pickle/game/get`
     ---
     Returns the data for a given game, specified by `game_id`. This data includes (in this order): game ID, winner user ID, loser user ID, winner points, loser points
 
@@ -115,7 +115,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**: ({game_id}, {winner_id}, {loser_id}, {winner_points}, {loser_points})
 
-- `POST pickle/game`
+- `pickle/game/register`
     ---
     Used to register a game in the database. All information about the game must be provided. Returns the game ID of the newly registered game.
 
