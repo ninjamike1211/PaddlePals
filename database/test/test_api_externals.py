@@ -9,5 +9,5 @@ def setup_api(tmp_path, users=None):
 def test_coffee(tmp_path):
     api = setup_api(tmp_path)
 
-    message, code = api.handle_request('GET', '/pickle/coffee')
+    message, code = api.handle_request('/pickle/coffee', None)
     assert code == 418

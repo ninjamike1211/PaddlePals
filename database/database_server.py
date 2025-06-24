@@ -1,4 +1,6 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+
 from database_api import restAPI
 
 class DatabaseServer(BaseHTTPRequestHandler):
@@ -8,22 +10,26 @@ class DatabaseServer(BaseHTTPRequestHandler):
         print(f'{self.command} {self.path}')
 
         try:
-            response, code = pickleAPI.handle_request(self.command, self.path)
+            body_length = int(self.headers['Content-Length'])
+            body = self.rfile.read(body_length)
+            print(body)
+
+            params = json.loads(body.decode('utf-8'))
+            print(params)
+
+            response, code = pickleAPI.handle_request(self.path, params)
             print(response, code)
 
             if code == 200:
                 self.send_response(code)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(bytes(str(response), 'utf-8'))
+                self.wfile.write(bytes(json.dumps(response), 'utf-8'))
             else:
                 self.send_error(code, str(response))
 
         except Exception as error:
             self.send_error(400, f'Error: {error}')
-
-        finally:
-            self.close_connection()
 
     def do_GET(self):
         return self.pickle_handle_request()
