@@ -33,23 +33,19 @@ def test_init(tmp_path):
 def test_user_admin(tmp_path):
     api = setup_api(tmp_path)
     
-    request = api.APIRequest('GET', 'user', {'user_id':'0'})
-    user, code = api.api_user(request)
+    user, code = api.api_user_get({'user_id':0})
     assert type(user) is str
     assert code == 404
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'0', 'username':'notAdmin'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':0, 'username':'notAdmin'})
     assert type(result) is str
     assert code == 404
 
-    request = api.APIRequest('DELETE', 'user', {'user_id':'0'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_delete({'user_id':0})
     assert type(result) is str
     assert code == 404
     
-    request = api.APIRequest('GET', 'user_id', {'username':'admin'})
-    user, code = api.api_user_id(request)
+    user, code = api.api_user_delete({'username':'admin'})
     assert type(user) is str
     assert code == 400
 
@@ -58,23 +54,19 @@ def test_user_admin(tmp_path):
 def test_create_user(tmp_path):
     api = setup_api(tmp_path)
 
-    request = api.APIRequest('POST', 'user', {'username':'createUserTest', 'password':'createUserPassword'})
-    user_id, code = api.api_user(request)
+    user_id, code = api.api_user_create({'username':'createUserTest', 'password':'createUserPassword'})
     assert user_id == {'user_id':1}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user', {'user_id':1})
-    user, code = api.api_user(request)
+    user, code = api.api_user_get({'user_id':1})
     assert user == {'username':'createUserTest', 'gamesPlayed':0, 'gamesWon':0, 'averageScore':0.0}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_id', {'username':'createUserTest'})
-    user_id, code = api.api_user_id(request)
+    user_id, code = api.api_user_id({'username':'createUserTest'})
     assert user_id == {'user_id':1}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_auth', {'username':'createUserTest', 'password':'createUserPassword'})
-    result, code = api.api_user_auth(request)
+    result, code = api.api_user_auth({'username':'createUserTest', 'password':'createUserPassword'})
     assert result == {'success':True}
     assert code == 200
 
@@ -82,18 +74,15 @@ def test_create_user(tmp_path):
 def test_create_bad_users(tmp_path):
     api = setup_api(tmp_path, users={'testUser':'testPass'})
 
-    request = api.APIRequest('POST', 'user', {'username':'admin', 'password':'testPass'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_create({'username':'admin', 'password':'testPass'})
     assert type(result) is str
     assert code == 400
 
-    request = api.APIRequest('POST', 'user', {'username':'deleted_user', 'password':'testPass'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_create({'username':'deleted_user', 'password':'testPass'})
     assert type(result) is str
     assert code == 400
 
-    request = api.APIRequest('POST', 'user', {'username':'testUser', 'password':'differentTestPass'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_create({'username':'testUser', 'password':'differentTestPass'})
     assert type(result) is str
     assert code == 403
 
@@ -101,38 +90,31 @@ def test_create_bad_users(tmp_path):
 def test_delete_user(tmp_path):
     api = setup_api(tmp_path, users={'testUser':'testPass'})
 
-    request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'username'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_get({'user_id':1, 'objects':['username']})
     assert result == {'username':'testUser'}
     assert code == 200
 
-    request = api.APIRequest('DELETE', 'user', {'user_id':'1'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_delete({'user_id':1})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user', {'user_id':'1'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_get({'user_id':1})
     assert result == {'username':'deleted_user', 'gamesPlayed':None, 'gamesWon':None, 'averageScore':None}
     assert code == 200
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'name'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':1, 'username':'name'})
     assert type(result) is str
     assert code == 404
 
-    request = api.APIRequest('GET', 'user_id', {'username':'testUser'})
-    result, code = api.api_user_id(request)
+    result, code = api.api_user_id({'username':'testUser'})
     assert type(result) is str
     assert code == 404
 
-    request = api.APIRequest('GET', 'user_id', {'username':'deleted_user'})
-    result, code = api.api_user_id(request)
+    result, code = api.api_user_id({'username':'deleted_user'})
     assert type(result) is str
     assert code == 400
 
-    request = api.APIRequest('GET', 'user_games', {'user_id':'1'})
-    result, code = api.api_user_games(request)
+    result, code = api.api_user_games({'user_id':1})
     assert type(result) is str
     assert code == 404
 
@@ -144,76 +126,62 @@ def test_delete_user(tmp_path):
 def test_modify_username(tmp_path):
     api = setup_api(tmp_path, users={'testUser':'testPass', 'testUser2':'electricBoogaloo'})
 
-    request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'username'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_get({'user_id':1, 'objects':['username']})
     assert result == {'username':'testUser'}
     assert code == 200
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'differentName'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':1, 'username':'differentName'})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'username'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_get({'user_id':1, 'objects':['username']})
     assert result == {'username':'differentName'}
     assert code == 200
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'admin'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':1, 'username':'admin'})
     assert type(result) is str
     assert code == 400
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'deleted_user'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':1, 'username':'deleted_user'})
     assert type(result) is str
     assert code == 400
 
-    request = api.APIRequest('PUT', 'user', {'user_id':'1', 'username':'testUser2'})
-    result, code = api.api_user(request)
+    result, code = api.api_user_set({'user_id':1, 'username':'testUser2'})
     assert type(result) is str
     assert code == 403
 
 def test_post_game(tmp_path):
     api = setup_api(tmp_path, users={'userA':'passwordA', 'userB':'passwordB'})
 
-    request = api.APIRequest('POST', 'game', {'winner_id':'1', 'loser_id':'2', 'winner_points':'11', 'loser_points':'7'})
-    game_id, code = api.api_game(request)
+    game_id, code = api.api_game_register({'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
     assert game_id == {'game_id':0}
     assert code == 200
 
-    request = api.APIRequest('GET', 'game', {'game_id':'0'})
-    game, code = api.api_game(request)
+    game, code = api.api_game_get({'game_id':0})
     assert game == {'game_id':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7}
     assert code == 200
 
-    request = api.APIRequest('POST', 'game', {'winner_id':'2', 'loser_id':'1', 'winner_points':'12', 'loser_points':'10'})
-    game_id, code = api.api_game(request)
+    game_id, code = api.api_game_register({'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10})
     assert game_id == {'game_id':1}
     assert code == 200
 
-    request = api.APIRequest('GET', 'game', {'game_id':'1'})
-    game, code = api.api_game(request)
+    game, code = api.api_game_get({'game_id':1})
     assert game == {'game_id':1, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_games', {'user_id':'1'})
-    gamesA, code = api.api_user_games(request)
+    gamesA, code = api.api_user_games({'user_id':1})
     assert gamesA == {'game_ids':[0,1]}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_games', {'user_id':'2'})
-    gamesB, code = api.api_user_games(request)
-    assert gamesA == {'game_ids':[0,1]}
+    gamesB, code = api.api_user_games({'user_id':2})
+    assert gamesB == {'game_ids':[0,1]}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user', {'user_id':'1', 'objects':'gamesPlayed,gamesWon,averageScore'})
-    userA_data, code = api.api_user(request)
+    userA_data, code = api.api_user_get({'user_id':1, 'objects':['gamesPlayed', 'gamesWon', 'averageScore']})
     assert userA_data == {'gamesPlayed':2, 'gamesWon':1, 'averageScore':10.5}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user', {'user_id':'2', 'objects':'gamesPlayed,gamesWon,averageScore'})
-    userA_data, code = api.api_user(request)
+    userA_data, code = api.api_user_get({'user_id':2, 'objects':['gamesPlayed', 'gamesWon', 'averageScore']})
     assert userA_data == {'gamesPlayed':2, 'gamesWon':1, 'averageScore':9.5}
     assert code == 200
 
@@ -221,55 +189,45 @@ def test_post_game(tmp_path):
 def test_friends(tmp_path):
     api = setup_api(tmp_path, users={'userA':'passA', 'userB':'passB', 'userC':'passC'})
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'1'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':1})
     assert not friends
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'2'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':2})
     assert not friends
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'3'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':3})
     assert not friends
     assert code == 200
 
-    request = api.APIRequest('POST', 'user_friends', {'user_id':'1', 'friend_id':'2'})
-    result, code = api.api_user_friends(request)
+    result, code = api.api_user_addFriend({'user_id':1, 'friend_id':2})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('POST', 'user_friends', {'user_id':'3', 'friend_username':'userB'})
-    result, code = api.api_user_friends(request)
+    result, code = api.api_user_addFriend({'user_id':3, 'friend_username':'userB'})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('POST', 'user_friends', {'user_id':'3', 'friend_username':'userA'})
-    result, code = api.api_user_friends(request)
+    result, code = api.api_user_addFriend({'user_id':3, 'friend_username':'userA'})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('DELETE', 'user_friends', {'user_id':'2', 'friend_id':'1'})
-    result, code = api.api_user_friends(request)
+    result, code = api.api_user_removeFriend({'user_id':2, 'friend_id':1})
     assert result == {'success':True}
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'1'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':1})
     assert not {'user_id':2} in friends
     assert {'user_id':3} in friends
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'2'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':2})
     assert not {'user_id':1} in friends
     assert {'user_id':3} in friends
     assert code == 200
 
-    request = api.APIRequest('GET', 'user_friends', {'user_id':'3'})
-    friends, code = api.api_user_friends(request)
+    friends, code = api.api_user_friends({'user_id':3})
     assert {'user_id':1} in friends
     assert {'user_id':2} in friends
     assert code == 200
