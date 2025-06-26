@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import base64
 from dataclasses import dataclass
 
 class restAPI:
@@ -11,10 +12,12 @@ class restAPI:
             super().__init__(self.message)
 
 
-    def __init__(self, dbFile = 'pickle.db'):
+    def __init__(self, dbFile = 'pickle.db', useAuth = True):
         self.dbFile = dbFile
         self.dbCon = sqlite3.connect(self.dbFile)
         self.cursor = self.dbCon.cursor()
+        self.useAuth = useAuth
+        self.apiKey_list = {}
 
 
     def check_str(self, string: str):
@@ -71,15 +74,61 @@ class restAPI:
         self.cursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
         deleted = self.cursor.fetchone()
         return deleted and deleted[0] == 'deleted_user'
+    
+    def are_users_friends(self, userA, userB):
+        self.cursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
+        is_friend = self.cursor.fetchone()
+
+        if is_friend:
+            return True
+        else:
+            return False
+    
+    def checkApiKey(self, apiKey):
+        user_id = self.apiKey_list.get(apiKey)
+        return user_id
+    
+    def user_canView(self, sender_id, user_id):
+        if not self.useAuth:
+            return True
+
+        if not sender_id:
+            return False
+        
+        if sender_id == 0 or sender_id == user_id:
+            return True
+        
+        return self.are_users_friends(sender_id, user_id)
+    
+    
+    def user_canEdit(self, sender_id, user_id):
+        if not self.useAuth or sender_id == 0:
+            return True
+
+        if not sender_id:
+            return False
+        
+        if sender_id == 0:
+            return True
+        
+        return sender_id == user_id
+        
 
 
-    def handle_request(self, url:str, params:dict):
+    def handle_request(self, url:str, params:dict, api_key:str = None):
 
         url_parts = url[1:].split('/',1)
         if url_parts[0] != 'pickle':
             return f'Base endpoint must be "pickle/": {url_parts[0]}', 404
         
         endpoint = url_parts[1].replace('/', '_')
+
+        if self.useAuth and endpoint != "user_auth":
+            sender_id = self.checkApiKey(api_key)
+            params['sender_id'] = sender_id
+
+            if not sender_id:
+                return f'Authentication required, please obtain an API ket through pickle/user/auth', 401
         
         func = getattr(self, "api_" + endpoint, None)
         if func:
@@ -94,6 +143,9 @@ class restAPI:
             return f'Invalid parameters for GET pickle/user, must include user ID: {params}', 405
         
         user_id = self.check_int(params['user_id'])
+
+        if not self.user_canView(params.get('sender_id'), user_id):
+            return f'Access forbidden to user ID {user_id}', 403
 
         if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
             return f'User ID {user_id} is not a valid user', 404
@@ -120,7 +172,9 @@ class restAPI:
             return f'Invalid parameters for PUT pickle/user, must include user ID: {params}', 400
         
         user_id = self.check_int(params['user_id'])
-        # TODO: password authentication
+        
+        if not self.user_canEdit(params.get('sender_id'), user_id):
+            return f'Access forbidden to user ID {user_id}', 403
 
         if not self.is_user_valid(user_id):
             return f'User ID {user_id} is not a valid user', 404
@@ -173,7 +227,9 @@ class restAPI:
             return f'Invalid parameters for DELETE pickle/user, must include user ID: {params}', 400
         
         user_id = self.check_int(params['user_id'])
-        # TODO: password authentication
+        
+        if not self.user_canEdit(params.get('sender_id'), user_id):
+            return f'Access forbidden to user ID {user_id}', 403
 
         if not self.is_user_valid(user_id):
             return f'User ID {user_id} is not a valid user', 404
@@ -192,13 +248,14 @@ class restAPI:
         if not self.check_username(username):
             return f'Invalid username {username}', 400
         
-        # TODO: password authentication
-        
         self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-        userId = self.cursor.fetchone()
+        user_id = self.cursor.fetchone()
 
-        if userId:
-            return {'user_id':userId[0]}, 200
+        if user_id:
+            if self.user_canView(params.get('sender_id'), user_id[0]):
+                return {'user_id':user_id[0]}, 200
+            else:
+                return f'Access forbidden to user ID {user_id[0]}', 403
         
         else:
             return f'Username not found: {username}', 404
@@ -261,6 +318,9 @@ class restAPI:
         else:
             return 'ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400
         
+        if not self.user_canView(params.get('sender_id'), friend_id):
+            return f'Access forbidden to user ID {friend_id}', 403
+        
         self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
         self.dbCon.commit()
         return {'success':True}, 200
@@ -320,8 +380,15 @@ class restAPI:
         password = self.check_str(params['password'])
 
         if self.check_password(username, password):
+            self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+            user_id = self.cursor.fetchone()[0]
+
+            rand_val = os.urandom(12)
+            api_key = base64.b64encode(rand_val).decode('utf-8')
+            self.apiKey_list[api_key] = user_id
+
             print(f'Authentication successful for user {username}')
-            return {'success':True}, 200
+            return {'success':True, 'apiKey':api_key}, 200
         
         else:
             return f'Authentication failed for user {username}', 401
