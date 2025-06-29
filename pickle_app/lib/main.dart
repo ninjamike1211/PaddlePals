@@ -48,39 +48,40 @@ List<User> usersList = [];
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.5.105.211:80";
+  final String url = "http://10.0.0.188:80";
 
   //GET REQUEST
-  Future<List<User>> getRequest(String endpoint) async {
-    final response = await http.get(Uri.parse('$url$endpoint'));
+  Future<Map<String, dynamic>> getUserRequest(int id_num) async {
+    //"/pickle/user/get?user_id=1"
+    Map<String, int> u_id = {
+      'user_id': id_num,
+    };
 
-    //success
-    if(response.statusCode == 200){
-      final body = response.body;
+    print(u_id);
+    String endpoint = "/pickle/user/get";
 
-      //format into List<User> and check JSON decoding
-      try {
-        final jsonData = json.decode(body);
 
-        if (jsonData is Map<String, dynamic>) {
-          // single user object
-          return [User.fromJson(jsonData)];
-        } else if (jsonData is List) {
-          // list of user objects
-          return jsonData.map<User>((item) => User.fromJson(item)).toList();
-        } else {
-          throw FormatException('Unexpected JSON format');
-        }
-      } catch (e) {
-        throw FormatException('Error decoding response: $e');
-      }
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(u_id),
+    );
+
+    print("Sent JSON: ${jsonEncode(u_id)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      return json.decode(response.body);
     }
     else{
-      throw Exception('GET request FAILED: ${response.statusCode}');
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
     }
   }
 
-  Future<dynamic> postNewUserRequest(String un, String pw) async {
+  Future<Map<String, dynamic>> postNewUserRequest(String un, String pw) async {
     print(un);
     print(pw);
     Map<String, String> newUser = {
@@ -89,7 +90,7 @@ class APIRequests {
     };
 
     print(newUser);
-    String endpoint = "/pickle/user";
+    String endpoint = "/pickle/user/create";
 
 
     final response = await http.post(
@@ -150,6 +151,9 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
               border: OutlineInputBorder(),
             ),
           ),
+          SizedBox(
+            height: 16,
+          ),
           TextField(
             controller: _controller2,
             decoration: InputDecoration(
@@ -188,27 +192,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-// class MyAppState extends ChangeNotifier {
-//   var current = WordPair.random();
-//
-//   void getNext() {
-//     current = WordPair.random();
-//     notifyListeners();
-//   }
-//
-//   var favorites = <WordPair>[];
-//
-//   void toggleFavorite() {
-//     if (favorites.contains(current)) {
-//       favorites.remove(current);
-//     } else {
-//       favorites.add(current);
-//     }
-//     notifyListeners();
-//   }
-// }
-
 
 class MyHomePage extends StatefulWidget {
   @override
@@ -331,24 +314,32 @@ class HistoryPage extends StatelessWidget{
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History'),
+        title: const Text('History\n(View Stats from Database)'),
       ),
       body: Center(
-        child: FutureBuilder<List<User>>(
-            future: api.getRequest("/pickle/user?user_id=1"),
+        child: FutureBuilder<Map<String, dynamic>>(
+            future: api.getUserRequest(9),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const CircularProgressIndicator();
               } else if (snapshot.hasError) {
-                //formatting error here
                 return Text('Error: ${snapshot.error}');
               } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const Text('No user data available');
               }
 
-              final user = snapshot.data![0]; // get the first user
+              final userData = snapshot.data!;
+              final user = User.fromJson(userData);
 
-              return Text('Username: ${user.username}');
+              return Text(
+                  'Username: ${user.username}\n'
+                  'Games Played: ${user.gamesPlayed}\n'
+                  'Games Won: ${user.gamesWon}\n'
+                      'Average Points per Game: ${user.avgScore}',
+                style: TextStyle(
+                  fontSize: 18,
+                ),
+              );
             },
         ), //FutureBuilder
       ), //Center

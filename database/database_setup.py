@@ -63,14 +63,14 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
             conn.commit()
 
 
-        cursor.close()
+        # cursor.close()
 
     except sqlite3.Error as error:
         print('Error occurred - ', error)
 
-    finally:
-        if conn:
-            conn.close()
+    # finally:
+    #     if conn:
+    #         conn.close()
 
 
 if __name__ == '__main__':
