@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -116,6 +120,56 @@ class APIRequests {
 
 final api = APIRequests();
 
+class BleFunctionality{
+
+  final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle();
+  final List<DiscoveredDevice> devices = [];
+  late StreamSubscription<DiscoveredDevice> scanSubscription;
+
+  BleFunctionality();
+
+  Future<bool> requestPermissions() async {
+    final status = await [
+      Permission.location,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+    ].request();
+
+    return status.values.every((s) => s.isGranted);
+  }
+
+  Future<void> startScan({required void Function(DiscoveredDevice) onDeviceDiscovered}) async {
+    bool granted = await requestPermissions();
+    if(granted) {
+      flutterReactiveBle.statusStream.listen((status) {
+        if (status == BleStatus.ready) {
+          print("Ready for BLE discovery");
+          scanSubscription = flutterReactiveBle
+              .scanForDevices(withServices: <Uuid>[])
+              .listen((device) {
+            // Add to list if not already present
+            final known = devices.any((d) => d.id == device.id);
+            if (!known) {
+              devices.add(device);
+              onDeviceDiscovered(device);
+            }
+          }, onError: (error) {
+            print('Scan error: $error');
+          });
+        }
+        else {
+          print("BLE status: $status ");
+        }
+      });
+    }
+    else{
+      print("Permissions not granted");
+    }
+  }
+}
+
+final myBLE = BleFunctionality();
+
 class MyTextEntryWidget extends StatefulWidget {
   @override
   _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
@@ -217,6 +271,9 @@ class _MyHomePageState extends State<MyHomePage> {
         page = HistoryPage();
         break;
       case 3:
+        page = ProfilePage();
+        break;
+      case 4:
         page = newUserPage();
         break;
       default:
@@ -243,6 +300,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       NavigationRailDestination(
                         icon: Icon(Icons.history),
                         label: Text('History'),
+                      ),
+                      NavigationRailDestination(
+                          icon: Icon(Icons.person),
+                          label: Text('ProfileS')
                       ),
                       NavigationRailDestination(
                           icon: Icon(Icons.add),
@@ -366,6 +427,77 @@ class _newUserPageState extends State<newUserPage> {
         child: Column(
           children: [
             MyTextEntryWidget(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ProfilePage extends StatefulWidget{
+  const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  // final String username =
+
+  void scan(){
+    myBLE.startScan(onDeviceDiscovered: (device) {
+      setState(() {}); // Trigger rebuild; myBLE.devices is already updated
+    });
+  }
+
+  void connect(){
+    print("Pressed");
+  }
+
+  void initState() {
+    super.initState();
+    scan();
+  }
+
+  @override
+  Widget build(BuildContext context){
+    final List<DiscoveredDevice> devices = myBLE.devices;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Your Profile'),
+      ),
+      body: Center(
+        child: Column(
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              color: Colors.blue,
+            ),
+            SizedBox(height: 16),
+            Text(
+              "Username:"
+            ),
+            SizedBox(height: 16,),
+            Expanded(
+              child: ListView.builder(
+              itemCount: devices.length,
+              itemBuilder: (context, index) {
+                final device = devices[index];
+                return ListTile(
+                  title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
+                  subtitle: Text(device.id),
+                  //trailing: Text("RSSI: ${device.rssi}"),
+                  onTap: connect,
+                );
+              }
+              ),
+            ),
+            ElevatedButton(
+                onPressed: scan,
+                child: Text("Rescan")
+            )
           ],
         ),
       ),
