@@ -2,7 +2,6 @@ import os
 import sqlite3
 import hashlib
 import base64
-from dataclasses import dataclass
 
 class restAPI:
 
