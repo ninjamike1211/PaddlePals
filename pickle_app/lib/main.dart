@@ -64,6 +64,7 @@ class APIRequests {
     print(u_id);
     String endpoint = "/pickle/user/get";
 
+    //NOTE Authorization header for authorization api (look up standard authorization header, Bearer)
 
     final response = await http.post(
       Uri.parse('$url$endpoint'),
@@ -125,6 +126,7 @@ class BleFunctionality{
   final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle();
   final List<DiscoveredDevice> devices = [];
   late StreamSubscription<DiscoveredDevice> scanSubscription;
+  late StreamSubscription<ConnectionStateUpdate> connection;
 
   BleFunctionality();
 
@@ -165,6 +167,24 @@ class BleFunctionality{
     else{
       print("Permissions not granted");
     }
+  }
+
+  Future<void> connectDevice(DiscoveredDevice selectedDevice, void Function(bool) connectionStatus) async {
+    connection = flutterReactiveBle.connectToDevice(id: selectedDevice.id).listen((connectionState) {
+      print("Connection State for device ${selectedDevice
+          .name} : ${connectionState.connectionState}");
+      if (connectionState.connectionState == DeviceConnectionState.connected) {
+        connectionStatus(true);
+        print("connected");
+      }
+      else if (connectionState.connectionState ==
+          DeviceConnectionState.disconnected) {
+        connectionStatus(false);
+        print("disconnected");
+      }
+    }, onError: (Object error){
+      print("Connecting to device resulted in error $error");
+    });
   }
 }
 
@@ -442,7 +462,7 @@ class ProfilePage extends StatefulWidget{
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // final String username =
+  bool isConnected = false;
 
   void scan(){
     myBLE.startScan(onDeviceDiscovered: (device) {
@@ -450,8 +470,15 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
-  void connect(){
+  void connect(DiscoveredDevice device){
     print("Pressed");
+    myBLE.connectDevice(device, (bool status) {
+      setState(() {
+        isConnected = status;
+      });
+      print("Connection status updated: $status");
+    });
+
   }
 
   void initState() {
@@ -489,7 +516,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
                   subtitle: Text(device.id),
                   //trailing: Text("RSSI: ${device.rssi}"),
-                  onTap: connect,
+                  onTap: () => connect(device),
                 );
               }
               ),
