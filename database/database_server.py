@@ -1,5 +1,6 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+import sys
 
 from database_api import restAPI
 
@@ -39,13 +40,15 @@ class DatabaseServer(BaseHTTPRequestHandler):
             self.send_error(400, f'Error: {error}')
 
 
-pickleAPI = restAPI()
+if __name__ == "__main__":
+    auth = not (len(sys.argv) >= 2 and sys.argv[1] == 'noAuth')
+    pickleAPI = restAPI(useAuth=auth)
 
-try:
-    httpd = HTTPServer(('',80),DatabaseServer)
-except PermissionError:
-    httpd = HTTPServer(('',8080), DatabaseServer)
+    try:
+        httpd = HTTPServer(('',80),DatabaseServer)
+    except PermissionError:
+        httpd = HTTPServer(('',8080), DatabaseServer)
 
-print('PicklePals server started, now listening for incoming requests')
+    print(f'PicklePals server started on port {httpd.server_port} with authentication {'enabled' if auth else 'disabled'}.')
 
-httpd.serve_forever()
+    httpd.serve_forever()
