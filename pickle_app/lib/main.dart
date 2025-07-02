@@ -444,8 +444,8 @@ class GamePage extends StatefulWidget{
 
 class _GamePageState extends State<GamePage> {
   final game = Game();
-  final serviceUuid = Uuid.parse("your-service-uuid");
-  final characteristicUuid = Uuid.parse("your-char-uuid");
+  final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
+  final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
 
 
   String getTitle(){
