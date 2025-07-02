@@ -127,6 +127,7 @@ class BleFunctionality{
   final List<DiscoveredDevice> devices = [];
   late StreamSubscription<DiscoveredDevice> scanSubscription;
   late StreamSubscription<ConnectionStateUpdate> connection;
+  DiscoveredDevice? connectedDevice;
 
   BleFunctionality();
 
@@ -175,20 +176,104 @@ class BleFunctionality{
           .name} : ${connectionState.connectionState}");
       if (connectionState.connectionState == DeviceConnectionState.connected) {
         connectionStatus(true);
+        connectedDevice = selectedDevice;
         print("connected");
       }
       else if (connectionState.connectionState ==
           DeviceConnectionState.disconnected) {
         connectionStatus(false);
+        connectedDevice = null;
         print("disconnected");
       }
     }, onError: (Object error){
       print("Connecting to device resulted in error $error");
     });
   }
+
+  void readLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+    required Uuid serviceUuid,
+    required Uuid characteristicUuid,
+    required Function(String) onData,
+    required Function(String) onError,
+  }){
+
+
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: characteristicUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    final response = flutterReactiveBle.subscribeToCharacteristic(characteristic).listen(
+          (data) {
+        // Convert List<int> to readable value
+        final stringValue = String.fromCharCodes(data);
+        print("read $stringValue");
+        onData(stringValue);
+      },
+      onError: (error) {
+        onError("Error reading string data $error");
+      },
+    );
+  }
 }
 
 final myBLE = BleFunctionality();
+
+class Game {
+  bool inProgress = false;
+  bool isFinished = false;
+  int myScore = 0;
+  int opponentScore = 0;
+  bool playingWithFriend = false;
+  String opponentName = "Opponent";
+  String winner = "";
+
+  void incMyScore(){
+    myScore += 1;
+  }
+
+  void incOppScore(){
+    opponentScore += 1;
+  }
+
+  bool checkForWinner(){
+    if (myScore >= 11 && opponentScore <= myScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else if(opponentScore >= 11 && myScore <= opponentScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else{
+      return false;
+    }
+  }
+
+  String getWinner(){
+    if (checkForWinner()){
+      if (myScore > opponentScore) {
+        winner = "me";
+        return winner;
+      }
+      else{
+        winner = "opponent";
+        return winner;
+      }
+    }
+    else{
+      return "no winner";
+    }
+  }
+
+  void startGame(){
+    inProgress = true;
+  }
+
+}
 
 class MyTextEntryWidget extends StatefulWidget {
   @override
@@ -249,7 +334,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
 }
 
 
-
+//User will probably be an app state
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -259,7 +344,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.tealAccent),
       ),
       home: MyHomePage(),
@@ -351,19 +435,140 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-class GamePage extends StatelessWidget{
+class GamePage extends StatefulWidget{
   const GamePage({super.key});
+
+  @override
+  State<GamePage> createState() => _GamePageState();
+}
+
+class _GamePageState extends State<GamePage> {
+  final game = Game();
+  final serviceUuid = Uuid.parse("your-service-uuid");
+  final characteristicUuid = Uuid.parse("your-char-uuid");
+
+
+  String getTitle(){
+    String title = "";
+    if (game.inProgress){
+      title = "Current Game";
+    }
+    else if (game.isFinished){
+      title = "Finished Game";
+    }
+    else{
+      title = "Start a Game";
+    }
+
+    return title;
+  }
+
+  //class Game variable
+  //title changes if game is started
+  //change page look if no connectedDevice
+
+  //subscribe to characteristics here
+  @override
+  void initState() {
+    super.initState();
+    if(myBLE.connectedDevice != null){
+     DiscoveredDevice device = myBLE.connectedDevice!;
+
+     myBLE.readLiveFromDevice(
+         connectedDevice: device,
+         serviceUuid: serviceUuid,
+         characteristicUuid: characteristicUuid,
+         onData: (data) {
+           setState(() {
+             game.myScore = int.tryParse(data) ?? 0;
+           });
+         },
+         onError: (error) {
+           setState(() {
+             game.myScore = -1;
+           });
+         },
+     );
+    }
+
+  }
 
   @override
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Current Game'),
+        title: Text(
+          getTitle()
+        ),
       ),
-      body: const Center(
-        child: Text('Placeholder'),
-      ),
-    );
+      body:
+        Column(
+          children: [
+            Row(
+              children: [
+                SizedBox(width: 80,),
+                Text(
+                  "Me",
+                  style: TextStyle(
+                    fontSize: 24
+                  ),
+                ),
+                SizedBox(width: 70,), //,may need to make spacing variable depending opponentName
+                Text(
+                  game.opponentName,
+                  style: TextStyle(
+                      fontSize: 24
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  height: 200,
+                  width: 125,
+                  decoration:BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    border: Border.all(
+                      color: Colors.black,
+                      width: 2
+                    )
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                      game.myScore.toString(),
+                      style: TextStyle(
+                        fontSize: 40
+                      ),
+                  ),
+
+                ),
+                SizedBox(width: 16),
+                Container(
+                    height: 200,
+                    width: 125,
+                    decoration:BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        border: Border.all(
+                            color: Colors.black,
+                            width: 2
+                        )
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                        game.opponentScore.toString(),
+                        style: TextStyle(
+                            fontSize: 40
+                        ),
+                    )
+                ),
+              ],
+            ),
+            Text("Message 1"),
+          ],
+        ),
+      );
   }
 }
 
