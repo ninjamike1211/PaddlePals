@@ -47,7 +47,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**:
     ```js
-    {"success":(true/false), "user_id":(user_id)}
+    {"user_id":(user_id)}
     ```
 
 - `pickle/user/delete`
@@ -79,18 +79,16 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/user/friends`
     ---
-    Returns a list of users who the current user is friends with.
+    Returns a list of user IDs/usernames who the current user is friends with.
 
     **params**:
     - `user_id`: the user ID to query list of friends from
-    - `include_username` *(optional)*: if this is set to `true`, the returned value will include a list of usernames as well
 
     **returns**:
     ```js
     {
-        "friends":[{"friend_id":(friend_id)}, ...]
-        // OR
-        "friends":[{"friend_id":(friend_id), "username":(username)}, ...]
+        "(friend_id)":{"username":(username)},
+        ...
     }
     ```
 

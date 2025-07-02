@@ -141,29 +141,36 @@ class restAPI:
         if 'user_id' not in params:
             return f'Invalid parameters for GET pickle/user, must include user ID: {params}', 405
         
-        user_id = self.check_int(params['user_id'])
+        user_ids = params['user_id']
+        if type(user_ids) is int:
+            user_ids = [user_ids]
 
-        if not self.user_canView(params.get('sender_id'), user_id):
-            return f'Access forbidden to user ID {user_id}', 403
+        result_dict = {}
+        for user_id in user_ids:
 
-        if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
-        
-        if 'objects' in params:
-            objects = params['objects']
-        else:
-            objects = ['username', 'gamesPlayed', 'gamesWon', 'averageScore']
+            if not self.user_canView(params.get('sender_id'), user_id):
+                return f'Access forbidden to user ID {user_id}', 403
 
-        results = {}
-        for object in objects:
-            if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
-                self.cursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
-                results[object] = self.cursor.fetchone()[0]
-
+            if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
+                return f'User ID {user_id} is not a valid user', 404
+            
+            if 'objects' in params:
+                objects = params['objects']
             else:
-                return f'ERROR: invalid object requested: {object}', 400
+                objects = ['username', 'gamesPlayed', 'gamesWon', 'averageScore']
 
-        return results, 200
+            results = {}
+            for object in objects:
+                if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
+                    self.cursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
+                    results[object] = self.cursor.fetchone()[0]
+
+                else:
+                    return f'ERROR: invalid object requested: {object}', 400
+            
+            result_dict[user_id] = results
+
+        return result_dict, 200
     
     
     def api_user_set(self, params: dict):
@@ -243,21 +250,28 @@ class restAPI:
         if len(params) != 1 or 'username' not in params:
             return 'GET pickle/user/id requires the parameter "username"', 400
         
-        username = params['username']
-        if not self.check_username(username):
-            return f'Invalid username {username}', 400
-        
-        self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-        user_id = self.cursor.fetchone()
+        usernames = params['username']
+        if type(usernames) is not list:
+            usernames = [usernames]
 
-        if user_id:
-            if self.user_canView(params.get('sender_id'), user_id[0]):
-                return {'user_id':user_id[0]}, 200
+        result_dict = {}
+        for username in usernames:
+            if not self.check_username(username):
+                return f'Invalid username {username}', 400
+            
+            self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+            user_id = self.cursor.fetchone()
+
+            if user_id:
+                if self.user_canView(params.get('sender_id'), user_id[0]):
+                    result_dict[username] = user_id[0]
+                else:
+                    return f'Access forbidden to user ID {user_id[0]}', 403
+            
             else:
-                return f'Access forbidden to user ID {user_id[0]}', 403
-        
-        else:
-            return f'Username not found: {username}', 404
+                return f'Username not found: {username}', 404
+            
+        return result_dict, 200
         
         
     def api_user_friends(self, params: dict):
@@ -272,20 +286,14 @@ class restAPI:
         self.cursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
         friend_list = self.cursor.fetchall()
 
-        if 'include_username' in params and params['include_username'] == True:
-            username_list = []
-            for id in friend_list:
-                self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
-                username_list.append(self.cursor.fetchone()[0])
+        username_list = []
+        for id in friend_list:
+            self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
+            username_list.append(self.cursor.fetchone()[0])
 
-            result = []
-            for i in range(0, len(friend_list)):
-                result.append({'user_id':friend_list[i][0], 'username':username_list[i]})
-        
-        else:
-            result = []
-            for id in friend_list:
-                result.append({'user_id':id[0]})
+        result = {}
+        for i in range(0, len(friend_list)):
+            result[friend_list[i][0]] = {'username':username_list[i]}
         
         return result, 200
     
@@ -397,16 +405,21 @@ class restAPI:
         if 'game_id' not in params:
             return f'ERROR: GET pickle/game must specify game_id parameter!', 400
         
-        game_id = self.check_int(params['game_id'])
+        game_ids = params['game_id']
+        if type(game_ids) is not list:
+            game_ids = [game_ids]
+
+        result_dict = {}
+        for game_id in game_ids:
+            self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
+            game = self.cursor.fetchone()
+
+            if not game:
+                return f'Game for game_id {game_id} not found', 404
+
+            result_dict[game[0]] = {'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
         
-        self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
-        game = self.cursor.fetchone()
-
-        if not game:
-            return f'Game for game_id {game_id} not found', 404
-
-        result = {'game_id':game[0], 'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
-        return result, 200
+        return result_dict, 200
     
 
     def api_game_register(self, params: dict):
