@@ -2,10 +2,10 @@ from database import database_setup
 from database import database_api
 import json
 
-def setup_api(tmp_path, users=None):
+def setup_api(tmp_path, useAuth=False, users=None):
     db_path = tmp_path / 'pickle.db'
     database_setup.setup_db(db_path, users)
-    return database_api.restAPI(db_path)
+    return database_api.restAPI(db_path, useAuth)
 
 
 def test_init(tmp_path):
@@ -67,7 +67,8 @@ def test_create_user(tmp_path):
     assert code == 200
 
     result, code = api.api_user_auth({'username':'createUserTest', 'password':'createUserPassword'})
-    assert result == {'success':True}
+    assert result['success'] == True
+    assert result['apiKey']
     assert code == 200
 
 

@@ -1,12 +1,12 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+import sys
 
 from database_api import restAPI
 
 class DatabaseServer(BaseHTTPRequestHandler):
 
-    def pickle_handle_request(self):
-
+    def do_POST(self):
         print(f'{self.command} {self.path}')
 
         try:
@@ -17,7 +17,15 @@ class DatabaseServer(BaseHTTPRequestHandler):
             params = json.loads(body.decode('utf-8'))
             print(params)
 
-            response, code = pickleAPI.handle_request(self.path, params)
+            auth_message = self.headers.get('Authorization')
+            apiKey = None
+
+            if auth_message:
+                auth_message_split = auth_message.split(' ')
+                if auth_message_split[0] == 'Bearer':
+                    apiKey = auth_message_split[1]
+
+            response, code = pickleAPI.handle_request(self.path, params, apiKey)
             print(response, code)
 
             if code == 200:
@@ -31,22 +39,16 @@ class DatabaseServer(BaseHTTPRequestHandler):
         except Exception as error:
             self.send_error(400, f'Error: {error}')
 
-    def do_GET(self):
-        return self.pickle_handle_request()
 
-    def do_PUT(self):
-        return self.pickle_handle_request()
+if __name__ == "__main__":
+    auth = not (len(sys.argv) >= 2 and sys.argv[1] == 'noAuth')
+    pickleAPI = restAPI(useAuth=auth)
 
-    def do_POST(self):
-        return self.pickle_handle_request()
+    try:
+        httpd = HTTPServer(('',80),DatabaseServer)
+    except PermissionError:
+        httpd = HTTPServer(('',8080), DatabaseServer)
 
-    def do_DELETE(self):
-        return self.pickle_handle_request()
+    print(f'PicklePals server started on port {httpd.server_port} with authentication {'enabled' if auth else 'disabled'}.')
 
-pickleAPI = restAPI()
-
-httpd = HTTPServer(('',80),DatabaseServer)
-
-print('PicklePals server started, now listening for incoming requests')
-
-httpd.serve_forever()
+    httpd.serve_forever()
