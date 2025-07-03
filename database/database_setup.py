@@ -3,7 +3,7 @@ import random
 import sqlite3
 import hashlib
 
-from .database_api import restAPI
+from database.database_api import restAPI
 
 def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
 
