@@ -11,10 +11,18 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Retrieves data about a specific user, specifically notated by user_id. By default, all accessible user data will be returned, but the `objects` parameter can be used to query for specific values.
 
     **params**:
-    - `user_id`: The user_id of the account to query data from
-    - `objects` *(optinoal)*: A comma separated, spaceless list of values to query from the database. The following are recognized parameters: `username`, `gamesPlayed`, `gamesWon`, `averageScore`
+    - `user_id`: The user_id of the account(s) to query data from. May be passed as an int or a list of ints
+    - `values` *(optinoal)*: A list of values to query for each user. The following are recognized values: `username`, `gamesPlayed`, `gamesWon`, `averageScore`. By default, all supported values will be queried
 
-    **returns**: list of comma separated values or ({username}, {gamesPlayed}, {gamesWon}, {averageScore})
+    **returns**: dictionary or list of dictionaries in the following format
+    ```js
+    {
+        "(user_id)": {"username":(username), "gamesPlayed":(gamesPlayed), "gamesWon":(gamesWon), "averageScore":(averageScore)},
+        // OR
+        "(user_id)": {"(value1_name)":(value1_val), ...},
+        ...
+    }
+    ```
 
 - `pickle/user/set`
     ---
@@ -24,7 +32,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: The user_id of the account to modify data
     - `username` *(optional*): value to set the username
 
-    **returns**: True
+    **returns**:
+    ```js
+    {"success":(true/false)}
+    ```
 
 - `pickle/user/create`
     ---
@@ -34,7 +45,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `username`: username for new user
     - `password`: password for new user
 
-    **returns**: {user_id}
+    **returns**:
+    ```js
+    {"user_id":(user_id)}
+    ```
 
 - `pickle/user/delete`
     ---
@@ -43,26 +57,40 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: the user ID of the account to delete.
 
-    **returns**: True
+    **returns**:
+    ```js
+    {"success":(true/false)}
+    ```
 
 - `pickle/user/id`
     ---
     Returns a user ID used by the database for a given username, if the request sender has permission to view the requested user.
 
     **params**:
-    - `username`: the username of the user to request ID for
+    - `username`: the username(s) of the user(s) to request ID for. May be a string or a list of strings
 
-    **returns**: {user_id}
+    **returns**:
+    ```js
+    {
+        "(username)":(user_id),
+        ...
+    }
+    ```
 
 - `pickle/user/friends`
     ---
-    Returns a list of users who the current user is friends with.
+    Returns a list of user IDs/usernames who the current user is friends with.
 
     **params**:
     - `user_id`: the user ID to query list of friends from
-    - `include_username` *(optional)*: if this is set to `true`, the returned value will include a list of usernames as well
 
-    **returns**: [{friend_id}, ...] **or** [({friend_id}, {username})]
+    **returns**:
+    ```js
+    {
+        "(friend_id)":{"username":(username)},
+        ...
+    }
+    ```
 
 - `pickle/user/addFriend`
     ---
@@ -73,7 +101,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `friend_id` *(optional)*: user ID of the friend to add to friends list
     - `friend_username` *(optional)*: username of the friend to add to friends list
 
-    **returns**: True
+    **returns**:
+    ```js
+    {"success":(true/false)}
+    ```
 
 - `pickle/user/removeFriend`
     ---
@@ -83,7 +114,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: user ID of the current user
     - `friend_id`: user ID of the friend to remove from friends list
 
-    **returns**: True
+    **returns**:
+    ```js
+    {"success":(true/false)}
+    ```
 
 - `pickle/user/games`
     ---
@@ -93,7 +127,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
 
-    **returns**: [{game_id}, ...]
+    **returns**:
+    ```js
+    {"game_ids":[game_id1, game_id2, ...]}
+    ```
 
 - `pickle/user/auth`
     ---
@@ -103,7 +140,10 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `username`: account username
     - `password`: account password
 
-    **returns**: True
+    **returns**:
+    ```js
+    {"success":(true/false), "apiKey":(api_key)}
+    ```
 
 ## pickle/game
 - `pickle/game/get`
@@ -111,9 +151,15 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Returns the data for a given game, specified by `game_id`. This data includes (in this order): game ID, winner user ID, loser user ID, winner points, loser points
 
     **params**:
-    - `game_id`: the game ID of the game to request
+    - `game_id`: the game ID(s) of the game to request, as either an int or a list of ints
 
-    **returns**: ({game_id}, {winner_id}, {loser_id}, {winner_points}, {loser_points})
+    **returns**:
+    ```js
+    {
+        "(game_id)": {"winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
+        ...
+    }
+    ```
 
 - `pickle/game/register`
     ---
@@ -125,4 +171,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `winner_points`: the number of points scored by the winning player
     - `loser_points`: the number of points scored by the losing player
 
-    **returns**: {game_id}
+    **returns**:
+    ```js
+    {"game_id":(game_id)}
+    ```
