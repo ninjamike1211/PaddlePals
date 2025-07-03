@@ -49,6 +49,6 @@ if __name__ == "__main__":
     except PermissionError:
         httpd = HTTPServer(('',8080), DatabaseServer)
 
-    print(f'PicklePals server started on port {httpd.server_port} with authentication {'enabled' if auth else 'disabled'}.')
+    print(f'PicklePals server started on port {httpd.server_port} with authentication {"enabled" if auth else "disabled"}.')
 
     httpd.serve_forever()
