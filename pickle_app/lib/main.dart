@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -33,8 +37,243 @@ class User {
       avgScore: json['averageScore']
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'username': username,
+    'gamesPlayed': gamesPlayed,
+    'gamesWon': gamesWon,
+    'averageScore': avgScore
+  };
 }
 
+List<User> usersList = [];
+
+/*
+CLASS FOR ALL API REQUESTS
+ */
+class APIRequests {
+  final String url = "http://10.0.0.188:80";
+
+  //GET REQUEST
+  Future<Map<String, dynamic>> getUserRequest(int id_num) async {
+    //"/pickle/user/get?user_id=1"
+    Map<String, int> u_id = {
+      'user_id': id_num,
+    };
+
+    print(u_id);
+    String endpoint = "/pickle/user/get";
+
+    //NOTE Authorization header for authorization api (look up standard authorization header, Bearer)
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(u_id),
+    );
+
+    print("Sent JSON: ${jsonEncode(u_id)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> postNewUserRequest(String un, String pw) async {
+    print(un);
+    print(pw);
+    Map<String, String> newUser = {
+      'username': un.trim(),
+      'password': pw.trim(),
+    };
+
+    print(newUser);
+    String endpoint = "/pickle/user/create";
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(newUser),
+    );
+
+    print("Sent JSON: ${jsonEncode(newUser)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+}
+
+final api = APIRequests();
+
+class BleFunctionality{
+
+  final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle();
+  final List<DiscoveredDevice> devices = [];
+  late StreamSubscription<DiscoveredDevice> scanSubscription;
+  late StreamSubscription<ConnectionStateUpdate> connection;
+  DiscoveredDevice? connectedDevice;
+
+  BleFunctionality();
+
+  Future<bool> requestPermissions() async {
+    final status = await [
+      Permission.location,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+    ].request();
+
+    return status.values.every((s) => s.isGranted);
+  }
+
+  Future<void> startScan({required void Function(DiscoveredDevice) onDeviceDiscovered}) async {
+    bool granted = await requestPermissions();
+    if(granted) {
+      flutterReactiveBle.statusStream.listen((status) {
+        if (status == BleStatus.ready) {
+          print("Ready for BLE discovery");
+          scanSubscription = flutterReactiveBle
+              .scanForDevices(withServices: <Uuid>[])
+              .listen((device) {
+            // Add to list if not already present
+            final known = devices.any((d) => d.id == device.id);
+            if (!known) {
+              devices.add(device);
+              onDeviceDiscovered(device);
+            }
+          }, onError: (error) {
+            print('Scan error: $error');
+          });
+        }
+        else {
+          print("BLE status: $status ");
+        }
+      });
+    }
+    else{
+      print("Permissions not granted");
+    }
+  }
+
+  Future<void> connectDevice(DiscoveredDevice selectedDevice, void Function(bool) connectionStatus) async {
+    connection = flutterReactiveBle.connectToDevice(id: selectedDevice.id).listen((connectionState) {
+      print("Connection State for device ${selectedDevice
+          .name} : ${connectionState.connectionState}");
+      if (connectionState.connectionState == DeviceConnectionState.connected) {
+        connectionStatus(true);
+        connectedDevice = selectedDevice;
+        print("connected");
+      }
+      else if (connectionState.connectionState ==
+          DeviceConnectionState.disconnected) {
+        connectionStatus(false);
+        connectedDevice = null;
+        print("disconnected");
+      }
+    }, onError: (Object error){
+      print("Connecting to device resulted in error $error");
+    });
+  }
+
+  void readLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+    required Uuid serviceUuid,
+    required Uuid characteristicUuid,
+    required Function(String) onData,
+    required Function(String) onError,
+  }){
+
+
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: characteristicUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    final response = flutterReactiveBle.subscribeToCharacteristic(characteristic).listen(
+          (data) {
+        // Convert List<int> to readable value
+        final stringValue = String.fromCharCodes(data);
+        print("read $stringValue");
+        onData(stringValue);
+      },
+      onError: (error) {
+        onError("Error reading string data $error");
+      },
+    );
+  }
+}
+
+final myBLE = BleFunctionality();
+
+class Game {
+  bool inProgress = false;
+  bool isFinished = false;
+  int myScore = 0;
+  int opponentScore = 0;
+  bool playingWithFriend = false;
+  String opponentName = "Opponent";
+  String winner = "";
+
+  void incMyScore(){
+    myScore += 1;
+  }
+
+  void incOppScore(){
+    opponentScore += 1;
+  }
+
+  bool checkForWinner(){
+    if (myScore >= 11 && opponentScore <= myScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else if(opponentScore >= 11 && myScore <= opponentScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else{
+      return false;
+    }
+  }
+
+  String getWinner(){
+    if (checkForWinner()){
+      if (myScore > opponentScore) {
+        winner = "me";
+        return winner;
+      }
+      else{
+        winner = "opponent";
+        return winner;
+      }
+    }
+    else{
+      return "no winner";
+    }
+  }
+
+  void startGame(){
+    inProgress = true;
+  }
+
+}
 
 class MyTextEntryWidget extends StatefulWidget {
   @override
@@ -42,10 +281,20 @@ class MyTextEntryWidget extends StatefulWidget {
 }
 
 class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
-  final TextEditingController _controller = TextEditingController();
+  final TextEditingController _controller1 = TextEditingController();
+  final TextEditingController _controller2 = TextEditingController();
 
-  void _printInput() {
-    print("Entered: ${_controller.text}");
+  _createNewUser(String userName, String password) {
+    // final newUser = User(
+    //   username: newName,
+    //   gamesPlayed: 0,
+    //   gamesWon: 0,
+    //   avgScore: 0
+    // );
+
+    // usersList.add(newUser);
+
+    api.postNewUserRequest(userName, password);
   }
 
   @override
@@ -55,15 +304,27 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
       child: Column(
         children: [
           TextField(
-            controller: _controller,
+            controller: _controller1,
             decoration: InputDecoration(
               labelText: 'Enter username',
               border: OutlineInputBorder(),
             ),
           ),
+          SizedBox(
+            height: 16,
+          ),
+          TextField(
+            controller: _controller2,
+            decoration: InputDecoration(
+              labelText: 'Enter password',
+              border: OutlineInputBorder(),
+            ),
+          ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _printInput,
+            onPressed: (){
+              _createNewUser(_controller1.text, _controller2.text);
+            },
             child: const Text('Create'),
           )
         ],
@@ -73,45 +334,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
 }
 
 
-class DataService{
-  static final DataService _instance = DataService._internal();
-  factory DataService() => _instance;
-  DataService._internal();
-
-  List<User>? _cachedData;
-
-  Future<List<User>> getRequest() async {
-    final url = Uri.parse("http://10.6.27.99:80/pickle/user?user_id=1");
-    final response = await http.get(url);
-
-    print("Status: ${response.statusCode}");
-    print("Body: ${response.body}");
-
-    if (response.statusCode == 200) {
-      final body = response.body;
-
-      try {
-        final jsonData = json.decode(body);
-
-        if (jsonData is Map<String, dynamic>) {
-          // single user object
-          return [User.fromJson(jsonData)];
-        } else if (jsonData is List) {
-          // list of user objects
-          return jsonData.map<User>((item) => User.fromJson(item)).toList();
-        } else {
-          throw FormatException('Unexpected JSON format');
-        }
-      } catch (e) {
-        throw FormatException('Error decoding response: $e');
-      }
-    } else {
-      throw Exception('Failed to fetch data: ${response.statusCode}');
-    }
-  }
-
-}
-
+//User will probably be an app state
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -121,34 +344,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.tealAccent),
       ),
       home: MyHomePage(),
     );
   }
 }
-
-// class MyAppState extends ChangeNotifier {
-//   var current = WordPair.random();
-//
-//   void getNext() {
-//     current = WordPair.random();
-//     notifyListeners();
-//   }
-//
-//   var favorites = <WordPair>[];
-//
-//   void toggleFavorite() {
-//     if (favorites.contains(current)) {
-//       favorites.remove(current);
-//     } else {
-//       favorites.add(current);
-//     }
-//     notifyListeners();
-//   }
-// }
-
 
 class MyHomePage extends StatefulWidget {
   @override
@@ -174,6 +375,9 @@ class _MyHomePageState extends State<MyHomePage> {
         page = HistoryPage();
         break;
       case 3:
+        page = ProfilePage();
+        break;
+      case 4:
         page = newUserPage();
         break;
       default:
@@ -202,6 +406,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         label: Text('History'),
                       ),
                       NavigationRailDestination(
+                          icon: Icon(Icons.person),
+                          label: Text('ProfileS')
+                      ),
+                      NavigationRailDestination(
                           icon: Icon(Icons.add),
                           label: Text('Add User'))
                     ],
@@ -227,19 +435,140 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-class GamePage extends StatelessWidget{
+class GamePage extends StatefulWidget{
   const GamePage({super.key});
+
+  @override
+  State<GamePage> createState() => _GamePageState();
+}
+
+class _GamePageState extends State<GamePage> {
+  final game = Game();
+  final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
+  final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
+
+
+  String getTitle(){
+    String title = "";
+    if (game.inProgress){
+      title = "Current Game";
+    }
+    else if (game.isFinished){
+      title = "Finished Game";
+    }
+    else{
+      title = "Start a Game";
+    }
+
+    return title;
+  }
+
+  //class Game variable
+  //title changes if game is started
+  //change page look if no connectedDevice
+
+  //subscribe to characteristics here
+  @override
+  void initState() {
+    super.initState();
+    if(myBLE.connectedDevice != null){
+     DiscoveredDevice device = myBLE.connectedDevice!;
+
+     myBLE.readLiveFromDevice(
+         connectedDevice: device,
+         serviceUuid: serviceUuid,
+         characteristicUuid: characteristicUuid,
+         onData: (data) {
+           setState(() {
+             game.myScore = int.tryParse(data) ?? 0;
+           });
+         },
+         onError: (error) {
+           setState(() {
+             game.myScore = -1;
+           });
+         },
+     );
+    }
+
+  }
 
   @override
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Current Game'),
+        title: Text(
+          getTitle()
+        ),
       ),
-      body: const Center(
-        child: Text('Placeholder'),
-      ),
-    );
+      body:
+        Column(
+          children: [
+            Row(
+              children: [
+                SizedBox(width: 80,),
+                Text(
+                  "Me",
+                  style: TextStyle(
+                    fontSize: 24
+                  ),
+                ),
+                SizedBox(width: 70,), //,may need to make spacing variable depending opponentName
+                Text(
+                  game.opponentName,
+                  style: TextStyle(
+                      fontSize: 24
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  height: 200,
+                  width: 125,
+                  decoration:BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    border: Border.all(
+                      color: Colors.black,
+                      width: 2
+                    )
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                      game.myScore.toString(),
+                      style: TextStyle(
+                        fontSize: 40
+                      ),
+                  ),
+
+                ),
+                SizedBox(width: 16),
+                Container(
+                    height: 200,
+                    width: 125,
+                    decoration:BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        border: Border.all(
+                            color: Colors.black,
+                            width: 2
+                        )
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                        game.opponentScore.toString(),
+                        style: TextStyle(
+                            fontSize: 40
+                        ),
+                    )
+                ),
+              ],
+            ),
+            Text("Message 1"),
+          ],
+        ),
+      );
   }
 }
 
@@ -271,24 +600,32 @@ class HistoryPage extends StatelessWidget{
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History'),
+        title: const Text('History\n(View Stats from Database)'),
       ),
       body: Center(
-        child: FutureBuilder<List<User>>(
-            future: DataService().getRequest(),
+        child: FutureBuilder<Map<String, dynamic>>(
+            future: api.getUserRequest(9),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const CircularProgressIndicator();
               } else if (snapshot.hasError) {
-                //formatting error here
                 return Text('Error: ${snapshot.error}');
               } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const Text('No user data available');
               }
 
-              final user = snapshot.data![0]; // get the first user
+              final userData = snapshot.data!;
+              final user = User.fromJson(userData);
 
-              return Text('Username: ${user.username}');
+              return Text(
+                  'Username: ${user.username}\n'
+                  'Games Played: ${user.gamesPlayed}\n'
+                  'Games Won: ${user.gamesWon}\n'
+                      'Average Points per Game: ${user.avgScore}',
+                style: TextStyle(
+                  fontSize: 18,
+                ),
+              );
             },
         ), //FutureBuilder
       ), //Center
@@ -296,8 +633,14 @@ class HistoryPage extends StatelessWidget{
   }
 }
 
-class newUserPage extends StatelessWidget{
+class newUserPage extends StatefulWidget{
   const newUserPage({super.key});
+
+  @override
+  State<newUserPage> createState() => _newUserPageState();
+}
+
+class _newUserPageState extends State<newUserPage> {
 
   @override
   Widget build(BuildContext context){
@@ -309,6 +652,84 @@ class newUserPage extends StatelessWidget{
         child: Column(
           children: [
             MyTextEntryWidget(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ProfilePage extends StatefulWidget{
+  const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  bool isConnected = false;
+
+  void scan(){
+    myBLE.startScan(onDeviceDiscovered: (device) {
+      setState(() {}); // Trigger rebuild; myBLE.devices is already updated
+    });
+  }
+
+  void connect(DiscoveredDevice device){
+    print("Pressed");
+    myBLE.connectDevice(device, (bool status) {
+      setState(() {
+        isConnected = status;
+      });
+      print("Connection status updated: $status");
+    });
+
+  }
+
+  void initState() {
+    super.initState();
+    scan();
+  }
+
+  @override
+  Widget build(BuildContext context){
+    final List<DiscoveredDevice> devices = myBLE.devices;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Your Profile'),
+      ),
+      body: Center(
+        child: Column(
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              color: Colors.blue,
+            ),
+            SizedBox(height: 16),
+            Text(
+              "Username:"
+            ),
+            SizedBox(height: 16,),
+            Expanded(
+              child: ListView.builder(
+              itemCount: devices.length,
+              itemBuilder: (context, index) {
+                final device = devices[index];
+                return ListTile(
+                  title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
+                  subtitle: Text(device.id),
+                  //trailing: Text("RSSI: ${device.rssi}"),
+                  onTap: () => connect(device),
+                );
+              }
+              ),
+            ),
+            ElevatedButton(
+                onPressed: scan,
+                child: Text("Rescan")
+            )
           ],
         ),
       ),

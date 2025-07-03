@@ -27,6 +27,7 @@ class restAPI:
             raise self.ValidationError(string, 'str')
 
     def check_int(self, val):
+        print(f'Checking int: {val}')
         try:
             return int(val)
         
@@ -141,6 +142,7 @@ class restAPI:
         if 'user_id' not in params:
             return f'Invalid parameters for GET pickle/user, must include user ID: {params}', 405
         
+
         user_ids = params['user_id']
         if type(user_ids) is int:
             user_ids = [user_ids]
