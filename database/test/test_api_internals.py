@@ -69,14 +69,14 @@ def test_create_user(tmp_path):
 
 
 def test_create_bad_users(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass'})
+    api = setup_api(tmp_path, users={'testUser':'testPass101'})
 
     with pytest.raises(restAPI.APIError) as apiError:
-        api._api_user_create({'username':'admin', 'password':'testPass'})
+        api._api_user_create({'username':'admin', 'password':'testPass101'})
     assert apiError.value.code == 400
 
     with pytest.raises(restAPI.APIError) as apiError:
-        result = api._api_user_create({'username':'deleted_user', 'password':'testPass'})
+        result = api._api_user_create({'username':'deleted_user', 'password':'testPass101'})
     assert apiError.value.code == 400
 
     with pytest.raises(restAPI.APIError) as apiError:
@@ -85,7 +85,7 @@ def test_create_bad_users(tmp_path):
 
 
 def test_delete_user(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass'})
+    api = setup_api(tmp_path, users={'testUser':'testPass101'})
 
     result = api._api_user_get({'user_id':1, 'objects':['username']})
     assert result == {1: {'username':'testUser'}}
@@ -118,7 +118,7 @@ def test_delete_user(tmp_path):
 
 
 def test_modify_username(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass', 'testUser2':'electricBoogaloo'})
+    api = setup_api(tmp_path, users={'testUser':'testPass101', 'testUser2':'electricBoogaloo'})
 
     result = api._api_user_get({'user_id':1, 'objects':['username']})
     assert result == {1: {'username':'testUser'}}
@@ -145,7 +145,7 @@ def test_modify_username(tmp_path):
     assert apiError.value.code == 403
 
 def test_post_game(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'passwordA', 'userB':'passwordB'})
+    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
 
     game_id = api._api_game_register({'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
     assert game_id == {'game_id':0}
@@ -171,7 +171,7 @@ def test_post_game(tmp_path):
 
 
 def test_friends(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'passA', 'userB':'passB', 'userC':'passC'})
+    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B', 'userC':'testPass101C'})
 
     friends = api._api_user_friends({'user_id':1})
     assert not friends

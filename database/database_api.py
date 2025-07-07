@@ -21,94 +21,25 @@ class restAPI:
             super().__init__(self.message)
 
 
-    def __init__(self, dbFile = 'pickle.db', useAuth = True):
-        """Creates APIError with a message and HTTP error code"""
+    def __init__(self, dbFile = 'pickle.db', useAuth = True, clearDB = False):
         """Creates a RESTful API instance and loads an attached SQLite database
 
         Args:
             dbFile (str, optional): Filepath to the SQLite database file. Defaults to 'pickle.db' in the pwd.
             useAuth (bool, optional): Set to False to disable authentication checks. Defaults to True.
         """
+        if clearDB and os.path.isfile(dbFile):
+            os.remove(dbFile)
+
         self._database = sqlite3.connect(dbFile)
         self._dbCursor = self._database.cursor()
         self._useAuth = useAuth
         self.__apiKeys = {}
-        
-    def check_username(self, username: str):
-        return (6 <= len(username) <= 25) and (username not in ('admin', 'deleted_user'))
-    
-    def check_password(self, password: str):
-        return (len(password) >= 12) and (password.find('password') == -1)
-    
-    def is_username_existing(self, username: str):
-        self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))
-        return self._dbCursor.fetchone() is not None
 
-    @staticmethod
-    def gen_password_hash(password:str):
-        salt = bytearray(os.urandom(16))
-        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
-        return hash, salt
-    
-    def check_userAuth(self, username:str, password:str):
-        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
-        data = self._dbCursor.fetchone()
-        if not data:
-            return False
+        if clearDB:
+            self._init_db()
 
-        dbHash = data[0]
-        salt = data[1]
-        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
-        return userHash == dbHash
         
-    def is_user_valid(self, user_id):
-        self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
-        valid = self._dbCursor.fetchone()
-        return valid and valid[0]
-    
-    def is_user_deleted(self, user_id):
-        self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
-        deleted = self._dbCursor.fetchone()
-        return deleted and deleted[0] == 'deleted_user'
-    
-    def are_users_friends(self, userA, userB):
-        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
-        is_friend = self._dbCursor.fetchone()
-
-        if is_friend:
-            return True
-        else:
-            return False
-    
-    def checkApiKey(self, apiKey):
-        user_id = self.__apiKeys.get(apiKey)
-        return user_id
-    
-    def user_canView(self, sender_id, user_id):
-        if not self._useAuth:
-            return True
-
-        if not sender_id:
-            return False
-        
-        if sender_id == 0 or sender_id == user_id:
-            return True
-        
-        return self.are_users_friends(sender_id, user_id)
-    
-    def user_canEdit(self, sender_id, user_id):
-        if not self._useAuth or sender_id == 0:
-            return True
-
-        if not sender_id:
-            return False
-        
-        if sender_id == 0:
-            return True
-        
-        return sender_id == user_id
-        
-
     def handle_request(self, uri:str, params:dict, api_key:str = None):
         """Handles an API request given a url endpoint and parameters
 
@@ -123,25 +54,116 @@ class restAPI:
         Returns:
             dict: dictionary of return values (dependent on endpoint)
         """
-        uri_parts = uri[1:].split('/',1)
-        if uri_parts[0] != 'pickle':
-            raise self.APIError(f'Base endpoint must be "pickle/": {uri_parts[0]}', 404)
-        
-        endpoint = uri_parts[1].replace('/', '_')
+        try:
+            uri_parts = uri[1:].split('/',1)
+            if uri_parts[0] != 'pickle':
+                raise self.APIError(f'Base endpoint must be "pickle/": {uri_parts[0]}', 404)
+            
+            endpoint = uri_parts[1].replace('/', '_')
 
-        if self._useAuth and endpoint != "user_auth":
-            sender_id = self.checkApiKey(api_key)
-            params['sender_id'] = sender_id
+            if self._useAuth and endpoint != "user_auth":
+                sender_id = self._checkApiKey(api_key)
+                params['sender_id'] = sender_id
 
-            if not sender_id:
-                raise self.APIError('Authentication required, please obtain an API ket through pickle/user/auth', 401)
+                if not sender_id:
+                    raise self.APIError('Authentication required, please obtain an API ket through pickle/user/auth', 401)
+            
+            func = getattr(self, "_api_" + endpoint, None)
+            if func:
+                return func(params)
+            
+            else:
+                raise self.APIError(f'Endpoint not found: {uri}', 404)
         
-        func = getattr(self, "_api_" + endpoint, None)
-        if func:
-            return func(params)
+        except Exception as error:
+            del params
+            del api_key
+            raise error
+
+
+    def _init_db(self):
+        self._dbCursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, salt BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
+        self._dbCursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
+        self._dbCursor.execute('CREATE TABLE friends(userA INT, userB INT)')
+
+        pass_hash, salt = self.gen_password_hash('root')
+        self._dbCursor.execute("INSERT INTO users VALUES (0, 'admin', ?, ?, 0, NULL, NULL, NULL)", (pass_hash, salt))
+        self._database.commit()
         
+        
+    def _check_username(self, username: str):
+        return (5 <= len(username) <= 25) and (username not in ('admin', 'deleted_user'))
+    
+    def _check_password(self, password: str):
+        return (len(password) >= 10) and (password.find('password') == -1)
+    
+    def _is_username_existing(self, username: str):
+        self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))
+        return self._dbCursor.fetchone() is not None
+
+    @staticmethod
+    def gen_password_hash(password:str):
+        salt = bytearray(os.urandom(16))
+        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return hash, salt
+    
+    def _check_userAuth(self, username:str, password:str):
+        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        data = self._dbCursor.fetchone()
+        if not data:
+            return False
+
+        dbHash = data[0]
+        salt = data[1]
+        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return userHash == dbHash
+    
+    def _checkApiKey(self, apiKey):
+        user_id = self.__apiKeys.get(apiKey)
+        return user_id
+        
+    def _is_user_valid(self, user_id):
+        self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
+        valid = self._dbCursor.fetchone()
+        return valid and valid[0]
+    
+    def _is_user_deleted(self, user_id):
+        self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+        deleted = self._dbCursor.fetchone()
+        return deleted and deleted[0] == 'deleted_user'
+    
+    def _are_users_friends(self, userA, userB):
+        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
+        is_friend = self._dbCursor.fetchone()
+
+        if is_friend:
+            return True
         else:
-            raise self.APIError(f'Endpoint not found: {uri}', 404)
+            return False
+    
+    def _user_canView(self, sender_id, user_id):
+        if not self._useAuth:
+            return True
+
+        if not sender_id:
+            return False
+        
+        if sender_id == 0 or sender_id == user_id:
+            return True
+        
+        return self._are_users_friends(sender_id, user_id)
+    
+    def _user_canEdit(self, sender_id, user_id):
+        if not self._useAuth or sender_id == 0:
+            return True
+
+        if not sender_id:
+            return False
+        
+        if sender_id == 0:
+            return True
+        
+        return sender_id == user_id
     
 
     def _api_user_get(self, params: dict):
@@ -155,11 +177,11 @@ class restAPI:
         result_dict = {}
         for user_id in user_ids:
 
-            if not self.user_canView(params.get('sender_id'), user_id):
-                raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
-
-            if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
+            if not self._is_user_deleted(user_id) and not self._is_user_valid(user_id):
                 raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+
+            if not self._user_canView(params.get('sender_id'), user_id):
+                raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
             
             if 'objects' in params:
                 objects = params['objects']
@@ -186,19 +208,19 @@ class restAPI:
         
         user_id = int(params['user_id'])
         
-        if not self.user_canEdit(params.get('sender_id'), user_id):
+        if not self._user_canEdit(params.get('sender_id'), user_id):
             raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         for param, val in params.items():
 
             if param == 'username':
-                if not self.check_username(val):
+                if not self._check_username(val):
                     raise self.APIError(f'Invalid username {val}', 400)
                 
-                if self.is_username_existing(val):
+                if self._is_username_existing(val):
                     raise self.APIError(f'Username {val} already exists', 403)
 
                 self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
@@ -219,11 +241,14 @@ class restAPI:
         # TODO: password authentication
         # TODO: check that username doesn't already exist
 
-        if not self.check_username(username):
+        if not self._check_username(username):
             raise self.APIError(f'Invalid username {username}', 400)
         
-        if self.is_username_existing(username):
+        if self._is_username_existing(username):
             raise self.APIError(f'Username {username} already exists', 403)
+        
+        if not self._check_password(password):
+            raise self.APIError(f'Invalid password "{password}", must be at least 10 characters long.', 400)
 
         pass_hash, salt = self.gen_password_hash(password)
 
@@ -241,10 +266,10 @@ class restAPI:
         
         user_id = int(params['user_id'])
         
-        if not self.user_canEdit(params.get('sender_id'), user_id):
+        if not self._user_canEdit(params.get('sender_id'), user_id):
             raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
@@ -263,14 +288,14 @@ class restAPI:
 
         result_dict = {}
         for username in usernames:
-            if not self.check_username(username):
+            if not self._check_username(username):
                 raise self.APIError(f'Invalid username {username}', 400)
             
             self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
             user_id = self._dbCursor.fetchone()
 
             if user_id:
-                if self.user_canView(params.get('sender_id'), user_id[0]):
+                if self._user_canView(params.get('sender_id'), user_id[0]):
                     result_dict[username] = user_id[0]
                 else:
                     raise self.APIError(f'Access forbidden to user ID {user_id[0]}', 403)
@@ -287,7 +312,7 @@ class restAPI:
 
         user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         self._dbCursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
@@ -311,12 +336,12 @@ class restAPI:
 
         user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
         if 'friend_id' in params:
             friend_id = int(params['friend_id'])
-            if not self.is_user_valid(friend_id):
+            if not self._is_user_valid(friend_id):
                 raise self.APIError(f'User ID {friend_id} is not a valid user', 404)
 
         elif 'friend_username' in params:
@@ -332,7 +357,7 @@ class restAPI:
         else:
             raise self.APIError('ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400)
         
-        if not self.user_canView(params.get('sender_id'), friend_id):
+        if not self._user_canView(params.get('sender_id'), friend_id):
             raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
         
         self._dbCursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
@@ -346,7 +371,7 @@ class restAPI:
 
         user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         if 'friend_id' not in params:
@@ -354,7 +379,7 @@ class restAPI:
 
         friend_id = int(params['friend_id'])
 
-        if not self.is_user_valid(friend_id):
+        if not self._is_user_valid(friend_id):
             raise self.APIError(f'User ID {friend_id} is not a valid user', 404)
         
         self._dbCursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
@@ -365,7 +390,7 @@ class restAPI:
     def _api_user_games(self, params: dict):
         user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
         if 'won' in params:
@@ -393,7 +418,7 @@ class restAPI:
         username = params['username']
         password = params['password']
 
-        if self.check_userAuth(username, password):
+        if self._check_userAuth(username, password):
             self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
             user_id = self._dbCursor.fetchone()[0]
 
@@ -438,10 +463,10 @@ class restAPI:
         winner_points = int(params['winner_points'])
         loser_points = int(params['loser_points'])
 
-        if not self.is_user_valid(winner_id):
+        if not self._is_user_valid(winner_id):
             raise self.APIError(f'User ID {winner_id} is not a valid user', 404)
         
-        if not self.is_user_valid(loser_id):
+        if not self._is_user_valid(loser_id):
             raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
 
         self._dbCursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
@@ -468,7 +493,7 @@ class restAPI:
 
     def updateUserGameStats(self, user_id):
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             return False
 
         self._dbCursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
