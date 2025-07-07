@@ -2,12 +2,13 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import sys
 
-from database_api import restAPI
+from database.database_api import restAPI
 
 class DatabaseServer(BaseHTTPRequestHandler):
 
     def do_POST(self):
         print(f'{self.command} {self.path}')
+        print(self.headers)
 
         try:
             body_length = int(self.headers['Content-Length'])
@@ -49,6 +50,6 @@ if __name__ == "__main__":
     except PermissionError:
         httpd = HTTPServer(('',8080), DatabaseServer)
 
-    print(f'PicklePals server started on port {httpd.server_port} with authentication {'enabled' if auth else 'disabled'}.')
+    print(f'PicklePals server started on port {httpd.server_port} with authentication {"enabled" if auth else "disabled"}.')
 
     httpd.serve_forever()
