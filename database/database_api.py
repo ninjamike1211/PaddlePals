@@ -83,7 +83,8 @@ class restAPI:
 
     def _init_db(self):
         self._dbCursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, salt BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
-        self._dbCursor.execute('CREATE TABLE games(game_id INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
+        self._dbCursor.execute('CREATE TABLE games(game_id INT, timestamp INT, game_type INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
+        self._dbCursor.execute('CREATE TABLE user_game_stats(user_id INT, game_id INT, swing_min REAL, swing_max REAL, swing_avg REAL, hit_modeX REAL, hit_modeY REAL, hit_avgX REAL, hit_avgY REAL)')
         self._dbCursor.execute('CREATE TABLE friends(userA INT, userB INT)')
 
         pass_hash, salt = self.gen_password_hash('root')
@@ -449,15 +450,17 @@ class restAPI:
             if not game:
                 raise self.APIError(f'Game for game_id {game_id} not found', 404)
 
-            result_dict[game[0]] = {'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
+            result_dict[game[0]] = {'timestamp':game[1], 'game_type':game[2], 'winner_id':game[3], 'loser_id':game[4], 'winner_points':game[5], 'loser_points':game[6]}
         
         return result_dict
     
 
     def _api_game_register(self, params: dict):
-        if any(key not in params for key in ('winner_id', 'loser_id', 'winner_points', 'loser_points')):
+        if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
             print(f'Invalid parameters for POST pickle/game: {params}')
 
+        timestamp = int(params['timestamp'])
+        game_type = int(params['game_type'])
         winner_id = int(params['winner_id'])
         loser_id = int(params['loser_id'])
         winner_points = int(params['winner_points'])

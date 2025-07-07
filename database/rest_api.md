@@ -156,7 +156,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(game_id)": {"winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
+        "(game_id)": {"timestamp":(timestamp), "game_type":(game_type), "winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
         ...
     }
     ```
@@ -166,6 +166,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Used to register a game in the database. All information about the game must be provided. Returns the game ID of the newly registered game.
 
     **params**:
+    - `timestamp`: Unix timestamp (int) of when the game began
+    - `game_type`: an int representing the game type
     - `winner_id`: user ID of the winning player
     - `loser_id`: user ID of the losing played
     - `winner_points`: the number of points scored by the winning player
