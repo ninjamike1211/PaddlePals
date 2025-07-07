@@ -18,7 +18,7 @@ void main() {
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.19.60:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -120,17 +120,57 @@ class APIRequests {
 
     Map<String, dynamic> user_id = await getUserID(un);
 
-    final int id_num = user_id['user_id'];
+    final int id_num = user_id[un];
 
     print("username: $un user_id: $id_num");
 
     Map<String, dynamic> params = {
       'user_id': id_num,
-      'include_username': true
+      // 'include_username': true
     };
 
     print(params);
     String endpoint = "/pickle/user/friends";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> addFriend(String un, String friendUN) async {
+    print(un);
+
+    Map<String, dynamic> user_id = await getUserID(un);
+
+    final int id_num = user_id[un];
+
+    print("username: $un user_id: $id_num");
+
+    Map<String, dynamic> params = {
+      'user_id': id_num,
+      'friend_username': friendUN
+    };
+
+    print(params);
+    String endpoint = "/pickle/user/addFriend";
     print("$endpoint");
 
 
@@ -237,10 +277,26 @@ class User extends ChangeNotifier {
     Map<String, dynamic> newUserMap = await api.getUserRequest(id_num);
     Map<String, dynamic> userMap = newUserMap['2'];
 
+    Map<String, dynamic> friendMap = await api.getFriends(newUserName);
+
+    List<String> friendList = [];
+
+    friendMap.forEach((id, data) {
+      final friendUsername = data['username'];
+      friendList.add(friendUsername);
+    });
+
     username = userMap['username'];
     gamesPlayed = userMap['gamesPlayed'];
     gamesWon = userMap['gamesWon'];
     avgScore = userMap['averageScore'];
+    pals = friendList;
+
+    notifyListeners();
+  }
+
+  void notifyNewFriend(String friendUsername){
+    pals.add(friendUsername);
 
     notifyListeners();
   }
@@ -716,23 +772,88 @@ class _GamePageState extends State<GamePage> {
   }
 }
 
-class SocialPage extends StatelessWidget{
+class SocialPage extends StatefulWidget{
   const SocialPage({super.key});
 
   @override
+  State<SocialPage> createState() => _SocialPageState();
+}
+
+class _SocialPageState extends State<SocialPage> {
+
+  final TextEditingController _controller = TextEditingController();
+
+  Future<void> showFriends(String username) async{
+    try{
+      var friends = await api.getFriends(username);
+      print("Friends: $friends");
+    } catch(e){
+      print("error getting friends: $e");
+    }
+  }
+
+  Future<void> addFriend(String username, String friendUsername) async{
+    try{
+      var success = await api.addFriend(username, friendUsername);
+      print(success["success"]);
+      if(success["success"]){
+        await context.read<User>().updateUserfromDatabase(username);
+      }
+      showFriends(username);
+    } catch (e){
+      print("error adding friend: $e");
+    }
+
+  }
+
+  @override
   Widget build(BuildContext context){
+    final user = context.watch<User>();
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Pals'),
       ),
       body: Center(
-        child: Container( //PUT LIST OF FRIENDS
-          width: 100,
-          height: 100,
-          color: Colors.blue,
-          child: Text('Hello'),
+        child:
+        Column(
+          children: [
+            SizedBox(height: 16),
+            SizedBox(
+              width: 300,
+              child: TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  labelText: 'Enter friend\'s username:',
+                  border: OutlineInputBorder(),
+                ),
+
+              ),
+            ),
+            SizedBox(height: 10),
+            ElevatedButton(
+                onPressed: () => addFriend(user.username, _controller.text),
+                child: Text("Add Friend")
+            ),
+            // ElevatedButton(
+            //     onPressed: () => showFriends(user.username),
+            //     child: Text("Show Pals")
+            // ),
+            Expanded(
+              child: ListView.builder(
+                  itemCount: user.pals.length,
+                  itemBuilder: (context, index) {
+                    final pal = user.pals[index];
+                    return ListTile(
+                      leading: Icon(Icons.person),
+                      title: Text(pal),
+                      onTap: () => print('Tapped $pal'),
+                    );
+                }
+              ),
+            )
+          ],
         ),
-      ),
+        ),
     );
   }
 }
@@ -855,7 +976,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             SizedBox(height: 16),
             Text(
-                "Username: ${user.username}"
+                "Hello, ${user.username}"
             ),
             SizedBox(height: 16,),
             Expanded(
