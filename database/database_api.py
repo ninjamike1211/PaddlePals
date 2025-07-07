@@ -168,7 +168,7 @@ class restAPI:
 
     def _api_user_get(self, params: dict):
         if 'user_id' not in params:
-            raise self.APIError(f'Invalid parameters for GET pickle/user, must include user ID: {params}', 405)
+            raise self.APIError(f'Invalid parameters for pickle/user/get, must include user ID: {params}', 400)
         
         user_ids = params['user_id']
         if type(user_ids) is int:
