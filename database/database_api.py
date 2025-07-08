@@ -455,6 +455,30 @@ class restAPI:
         return result_dict
     
 
+    def _api_game_stats(self, params: dict):
+        if 'game_id' not in params:
+            raise self.APIError(f'ERROR: GET pickle/game/stats must specify game_id parameter!', 400)
+        
+        game_id = int(params['game_id'])
+        user_id = int(params['user_id'])
+
+        self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (game_id, user_id))
+        stats = self._dbCursor.fetchone()
+
+        if not stats:
+            raise self.APIError(f'Game for game_id {game_id} played by user_id {user_id} not found', 404)
+
+        return {
+            "swing_min":(stats[2]),
+            "swing_max":(stats[3]),
+            "swing_avg":(stats[4]),
+            "hit_modeX":(stats[5]),
+            "hit_modeY":(stats[6]),
+            "hit_avgX":(stats[7]),
+            "hit_avgY":(stats[8])
+        }
+
+
     def _api_game_register(self, params: dict):
         if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
             print(f'Invalid parameters for POST pickle/game: {params}')
@@ -480,14 +504,45 @@ class restAPI:
             game_id = 0
 
         self._dbCursor.execute(
-            "INSERT INTO games VALUES (?, ?, ?, ?, ?)",
-            (game_id, winner_id, loser_id, winner_points, loser_points))
+            "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (game_id, timestamp, game_type, winner_id, loser_id, winner_points, loser_points))
         self._database.commit()
 
         self.updateUserGameStats(winner_id)
         self.updateUserGameStats(loser_id)
 
         return {'game_id':game_id}
+
+
+    def _api_game_registerStats(self, params: dict):
+        # if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
+        #     print(f'Invalid parameters for POST pickle/game: {params}')
+
+        user_id = int(params['user_id'])
+        game_id = int(params['game_id'])
+        swing_min = float(params['swing_min'])
+        swing_max = float(params['swing_max'])
+        swing_avg = float(params['swing_avg'])
+        hit_modeX = float(params['hit_modeX'])
+        hit_modeY = float(params['hit_modeY'])
+        hit_avgX = float(params['hit_avgX'])
+        hit_avgY = float(params['hit_avgY'])
+
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+        
+        # if not self._is_user_valid(loser_id):
+        #     raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
+
+        self._dbCursor.execute(
+            "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, game_id, swing_min, swing_max, swing_avg, hit_modeX, hit_modeY, hit_avgX, hit_avgY))
+        self._database.commit()
+
+        # self.updateUserGameStats(winner_id)
+        # self.updateUserGameStats(loser_id)
+
+        return {'success':True}
 
         
     def _api_coffee(self, params: dict):

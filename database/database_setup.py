@@ -27,7 +27,7 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
             else:
                 points_lose = points_win - 2
 
-            api._api_game_register({'winner_id':user_win, 'loser_id':user_lose, 'winner_points':points_win, 'loser_points':points_lose})
+            api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':user_win, 'loser_id':user_lose, 'winner_points':points_win, 'loser_points':points_lose})
     
     api.close()
 
@@ -35,10 +35,10 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
 
 if __name__ == '__main__':
     users = {
-        'ninjamike1211': 'password0',
-        'aje0714': 'password1',
-        'BOT-Lee': 'password2',
-        'jpk102pitt': 'password3',
+        'ninjamike1211': 'passUserID1',
+        'aje0714': 'passUserID2',
+        'BOT-Lee': 'passUserID3',
+        'jpk102pitt': 'passUserID4',
         'testUser': 'testPassword',
     }
     gen_games = 200
