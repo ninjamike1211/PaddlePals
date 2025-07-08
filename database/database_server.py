@@ -10,6 +10,8 @@ class DatabaseServer(BaseHTTPRequestHandler):
         print(f'{self.command} {self.path}')
 
         try:
+            print(f"Message Headers:\n{self.headers}")
+
             body_length = int(self.headers['Content-Length'])
             body = self.rfile.read(body_length)
             print(body)
