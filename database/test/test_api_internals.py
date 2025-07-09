@@ -52,9 +52,9 @@ def test_user_admin(tmp_path):
 
 def test_user_get(tmp_path):
     api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
-    api._api_game_register({'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
-    api._api_game_register({'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
-    api._api_game_register({'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
 
     # Valid test cases
     userA = api._api_user_get({'user_id':1})
@@ -204,17 +204,17 @@ def test_modify_username(tmp_path):
 def test_post_game(tmp_path):
     api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
 
-    game_id = api._api_game_register({'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
+    game_id = api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
     assert game_id == {'game_id':0}
 
     game = api._api_game_get({'game_id':0})
-    assert game == {0: {'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7}}
+    assert game == {0: {'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7}}
 
-    game_id = api._api_game_register({'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10})
+    game_id = api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10})
     assert game_id == {'game_id':1}
 
     game = api._api_game_get({'game_id':1})
-    assert game == {1: {'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10}}
+    assert game == {1: {'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10}}
 
     gamesA = api._api_user_games({'user_id':1})
     assert gamesA == {'game_ids':[0,1]}
@@ -262,3 +262,13 @@ def test_friends(tmp_path):
     friends = api._api_user_friends({'user_id':3})
     assert 1 in friends
     assert 2 in friends
+
+
+def test_game_stats(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B', 'userC':'testPass101C'})
+    
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
+
+    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':50})

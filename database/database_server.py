@@ -42,9 +42,20 @@ class DatabaseServer(BaseHTTPRequestHandler):
             self.send_error(400, f'Non-API Error: {error}')
 
 
+def setup_server(dbFile:str, port:int, useAuth:bool, clearDB:bool):
+    pickleAPI = restAPI(dbFile=dbFile, useAuth=useAuth, clearDB=clearDB)
+    httpd = HTTPServer(('',port),DatabaseServer)
+
+    print(f'PicklePals server started on port {httpd.server_port} with authentication {'enabled' if useAuth else 'disabled'}.')
+
+    httpd.serve_forever()
+
+
 if __name__ == "__main__":
-    auth = not (len(sys.argv) >= 2 and sys.argv[1] == 'noAuth')
-    pickleAPI = restAPI(useAuth=auth)
+    auth = not 'noAuth' in sys.argv
+    clear = 'clearDB' in sys.argv
+
+    pickleAPI = restAPI(useAuth=auth, clearDB=clear)
 
     try:
         httpd = HTTPServer(('',80),DatabaseServer)
