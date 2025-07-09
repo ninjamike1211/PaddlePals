@@ -56,6 +56,9 @@ BLEDescriptor* newSwingSpeedDesc;
 BLECharacteristic currentTempChar("c8e62f4c-a675-48a6-896a-3d2ec5e48075", BLECharacteristic::PROPERTY_NOTIFY);
 BLEDescriptor* currentTempDesc;
 
+// Bool to determine whether to use directional bias or not
+const bool USE_DIRECTIONAL_BIAS = true;
+
 // Boolean to check if device is connected
 bool deviceConnected = false;
 
@@ -67,6 +70,16 @@ int totalPointsAllTime = 0;
 
 // Variable to store the current max swing speed from Current Game
 float currentMaxSwingSpeed = 0.0;
+
+// Variables for swing speed
+bool swingActive = false;
+float swingPeakSpeed = 0.0;
+unsigned long swingStartTime = 0;
+
+// Adjusted threshold: 0.133 -> 0.4 -> 0.60
+const float swingThreshold = 0.70;  // m/s threshold
+const unsigned long swingCooldown = 500; // milliseconds
+unsigned long lastSwingEndTime = 0;
 
 // Timer variables
 // Stores last time temperature was published
@@ -102,6 +115,39 @@ class MyServerCallbacks: public BLEServerCallbacks {
     deviceConnected = false;
   }
 };
+
+// Code to calibrate gyro
+float gyroX_offset = 0.0;
+float gyroY_offset = 0.0;
+float gyroZ_offset = 0.0;
+
+void calibrateGyro() {
+  Serial.println("Hold the board still. Calibrating...");
+
+  float sumX = 0, sumY = 0, sumZ = 0;
+  const int samples = 200;
+
+  for (int i = 0; i < samples; i++) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+
+    sumX += g.gyro.x;
+    sumY += g.gyro.y;
+    sumZ += g.gyro.z;
+
+    delay(5);  // small delay to simulate ~1kHz
+  }
+
+  gyroX_offset = sumX / samples;
+  gyroY_offset = sumY / samples;
+  gyroZ_offset = sumZ / samples;
+
+  Serial.print("Calibration complete. Offsets: ");
+  Serial.print(gyroX_offset, 4); Serial.print(", ");
+  Serial.print(gyroY_offset, 4); Serial.print(", ");
+  Serial.println(gyroZ_offset, 4);
+}
+
 
 void initAccelerometer() {
   // Setup Accelerometer
@@ -257,6 +303,9 @@ void setup() {
   // Setup Accelerometer
   initAccelerometer();
 
+  // Calibrate gyro
+  calibrateGyro();
+
   // Create the BLE Device
   BLEDevice::init(bleServerName);
 
@@ -291,9 +340,77 @@ void loop() {
   // E.g. if it gives the past number of points, return the new total
   // Or if it gives the number of games played and the total points, calculate the average PPG
 
-  if (deviceConnected) {
+  if (!deviceConnected) {
     // Get the current millis
     unsigned long currentMillis = millis();
+
+    // High-frequency swing polling
+    static unsigned long lastPollTime = 0;
+
+    // Use a 10ms loop to check for swings
+    if (millis() - lastPollTime >= 10) {
+      lastPollTime = millis();
+
+      // Read gyro
+      sensors_event_t a, g, temp;
+      mpu.getEvent(&a, &g, &temp);
+
+      // Get raw angular velocity values and subtract the offset
+      float wx = g.gyro.x - gyroX_offset;
+      float wy = g.gyro.y - gyroY_offset;
+      float wz = g.gyro.z - gyroZ_offset;
+
+      // Add a filter to filter out low gyro velocities below 0.10 rad/s
+      float cleanX = (abs(wx) > 0.1) ? wx : 0.0;
+      float cleanY = (abs(wy) > 0.1) ? wy : 0.0;
+      float cleanZ = (abs(wz) > 0.1) ? wz : 0.0;
+      float newSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, USE_DIRECTIONAL_BIAS);
+
+      // Calculate magnitude of total acceleration - we wsill use this along with the swingThreshold to record a swing
+      float accelMagnitude = sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2));
+
+      // Anti-flip - if acceleration in the y direction is above a threshold, just return
+      // This should only occur when the paddle is dropped or flipped around.
+
+      if (!swingActive) {
+        // Start of a new swing
+        if (newSpeed > swingThreshold && accelMagnitude > 2.0 && (millis() - lastSwingEndTime > swingCooldown)) {
+          swingActive = true;
+          swingPeakSpeed = newSpeed;
+          swingStartTime = millis();
+        }
+      } else {
+        // In an active swing
+        if (newSpeed > swingPeakSpeed) {
+          swingPeakSpeed = newSpeed;
+        }
+
+        // End swing if speed drops below threshold (or fixed duration elapsed)
+        if (newSpeed < swingThreshold || millis() - swingStartTime > 300) {
+          swingActive = false;
+          lastSwingEndTime = millis();
+
+          // Record peak and update BLE logic
+          newSwingString = String(swingPeakSpeed) + " m/s";
+          float currentMax = checkMaxSwingSpeed(swingPeakSpeed);
+
+          static char maxSwingArray[50];
+          static char newSwingArray[50];
+          maxSwingString = String(currentMax) + " m/s";
+          maxSwingString.toCharArray(maxSwingArray, 50);
+          newSwingString.toCharArray(newSwingArray, 50);
+
+          maxSwingSpeedChar.setValue(maxSwingArray);
+          maxSwingSpeedChar.notify();
+          newSwingSpeedChar.setValue(newSwingArray);
+          newSwingSpeedChar.notify();
+
+          Serial.print("SWING DETECTED: ");
+          Serial.println(newSwingString);
+        }
+      }
+    }
+
 
     // If the interval has passed, get and send data to phone
     if (currentMillis - previousMillis >= interval) {
@@ -312,16 +429,8 @@ void loop() {
           incrementPoints();
         }
 
-        // Get the newest swing speed
-        float newSwingSpeed = calculateSwingSpeed(g.gyro.x, g.gyro.y, g.gyro.z);
-
-        // Check the max swing speed
-        float currentMax = checkMaxSwingSpeed(newSwingSpeed);
-
         // Send stats over in string format
         pointsString = String(pointsThisGame);
-        newSwingString = String(newSwingSpeed) + " m/s";
-        maxSwingString = String(currentMax) + " m/s";
         currentTemperature = String(temp.temperature) + " Celsius";
         
         // After calculations, start the transmission timer
@@ -332,23 +441,11 @@ void loop() {
         static char scoreArray[50];
         pointsString.toCharArray(scoreArray, 50);
         
-        static char maxSwingArray[50];
-        maxSwingString.toCharArray(maxSwingArray, 50);
-
-        static char newSwingArray[50];
-        newSwingString.toCharArray(newSwingArray, 50);
-
         static char currentTemperatureArray[50];
         currentTemperature.toCharArray(currentTemperatureArray, 50);
 
         scoreChar.setValue(scoreArray);
         scoreChar.notify();
-
-        maxSwingSpeedChar.setValue(maxSwingArray);
-        maxSwingSpeedChar.notify();
-
-        newSwingSpeedChar.setValue(newSwingArray);
-        newSwingSpeedChar.notify();
 
         currentTempChar.setValue(currentTemperatureArray);
         currentTempChar.notify();
@@ -358,12 +455,6 @@ void loop() {
         // Print to serial
         Serial.print("Current Score: ");
         Serial.println(pointsString);
-
-        Serial.print("Max Swing Speed: ");
-        Serial.println(maxSwingString);
-
-        Serial.print("Newest Swing Speed: ");
-        Serial.println(newSwingString);
 
         Serial.print("Current Temperature: ");
         Serial.println(currentTemperature);
@@ -412,12 +503,20 @@ float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) 
   return averagePoints;
 }
 
-float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity) {
+float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, bool useBias) {
   // Assume "r" - or the distance to the rotation center - is 10 cm.
   float r = 0.10;
 
   // Calculate magnitude of the total angular velocity
-  float angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
+  float angVelocity;
+
+  if (useBias) {
+    // Bias towards the x direction, since given the orientation and forehand/backhand, moving moreso on x axis
+    angVelocity = sqrt(1.0 * pow(xVelocity, 2) + 0.3 * pow(yVelocity, 2) + 0.4 * pow(zVelocity, 2));
+  }
+  else {
+    angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
+  }
 
   // Calculate final swing speed
   float finalSwingSpeed = angVelocity * r;
