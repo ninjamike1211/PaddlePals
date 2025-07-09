@@ -229,6 +229,49 @@ class APIRequests {
     }
     return false;
   }
+
+  Future<Map<String, dynamic>> registerGame(int timestamp, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async{
+    Map<String, dynamic> winner_id = await getUserID(winnerName);
+    final int winner_id_num = winner_id[winnerName];
+
+    Map<String, dynamic> loser_id = await getUserID(loserName);
+    final int loser_id_num = loser_id[loserName];
+
+    Map<String, dynamic> params = {
+      'timestamp': timestamp,
+      'game_type': gameTypeNum,
+      'winner_id': winner_id_num,
+      'loser_id': loser_id_num,
+      'winner_points': winnerPoints,
+      'loser_points': loserPoints
+    };
+
+    print(params);
+    String endpoint = "/pickle/game/register";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+
+  }
 }
 
 final api = APIRequests();
@@ -411,6 +454,8 @@ class Game {
   bool playingWithFriend = false;
   String opponentName = "Opponent";
   String winner = "";
+  String gameType = "Standard";
+  int startTime = 0;
 
   void incMyScore(){
     myScore += 1;
@@ -424,6 +469,7 @@ class Game {
     if (myScore >= 11 && opponentScore <= myScore - 2){
       inProgress = false;
       isFinished = true;
+
       return true;
     }
     else if(opponentScore >= 11 && myScore <= opponentScore - 2){
@@ -454,6 +500,27 @@ class Game {
 
   void startGame(){
     inProgress = true;
+    startTime = DateTime.now().millisecondsSinceEpoch ~/ 1000; //in seconds
+  }
+
+  void resetGame(){
+    inProgress = false;
+    isFinished = false;
+    myScore = 0;
+    opponentScore = 0;
+    playingWithFriend = false;
+    opponentName = "Opponent";
+    winner = "";
+  }
+
+  int gameTypeToInt(){
+    if (gameType == "Standard"){
+      return 0;
+    }
+    else{
+      print("invalid game type");
+      return -1;
+    }
   }
 
 }
@@ -670,11 +737,34 @@ class _GamePageState extends State<GamePage> {
     print("game started");
   }
 
+  void showWinner(winnerName){
+    showDialog(
+        context: context,
+        builder: (BuildContext context){
+          return AlertDialog(
+            title: Text("Game Over"),
+            content: Text("$winnerName is the winner!"),
+            actions: [
+              TextButton(
+                  onPressed: saveAndRestartGame,
+                  child: Text("Save and Restart")
+              )
+            ],
+          );
+        }
+    );
+  }
+
   void incMyScore(){
     setState(() {
       game.incMyScore();
     });
     print("My Score: ${game.myScore}");
+    if (game.checkForWinner()){
+      print("Finished? ${game.isFinished}");
+      final winnerName = context.read<User>().username;
+      showWinner(winnerName);
+    }
   }
 
   void incOppScore(){
@@ -682,7 +772,51 @@ class _GamePageState extends State<GamePage> {
       game.incOppScore();
     });
     print("Opp score: ${game.opponentScore}");
+    if (game.checkForWinner()){
+      print("Finished? ${game.isFinished}");
+      final winnerName = game.opponentName;
+      showWinner(winnerName);
+    }
   }
+
+  void saveAndRestartGame(){
+    int gameTypeNum = game.gameTypeToInt();
+
+    String winnerName = "";
+    String loserName = "";
+
+    int winnerPoints = -1;
+    int loserPoints = -1;
+
+    //handle no registered opponent
+    if (game.opponentName == "Opponent"){
+      //eventually change to NULL user
+      game.opponentName = "testUser";
+    }
+
+    if(game.getWinner() == "me"){
+      winnerName = context.read<User>().username;
+      loserName = game.opponentName;
+
+      winnerPoints = game.myScore;
+      loserPoints = game.opponentScore;
+    }
+    else{
+      winnerName = game.opponentName;
+      loserName = context.read<User>().username;
+
+      winnerPoints = game.opponentScore;
+      loserPoints = game.myScore;
+    }
+
+    api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+
+    setState(() {
+      game.resetGame();
+    });
+  }
+
+
 
   @override
   void initState() {
@@ -781,7 +915,7 @@ class _GamePageState extends State<GamePage> {
               ),
             ],
           ),
-          Text("Message 1"),
+          Text("Game type: ${game.gameType}"),
           ElevatedButton(
               onPressed: startStandardGame,
               child: Text("Start Game")
@@ -894,6 +1028,10 @@ class HistoryPage extends StatefulWidget{
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  List<String> statsToView = ["Games", "Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
+  
+
+
   @override
   Widget build(BuildContext context){
     return Scaffold(

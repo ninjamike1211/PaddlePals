@@ -156,8 +156,29 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(game_id)": {"winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
+        "(game_id)": {"timestamp":(timestamp), "game_type":(game_type), "winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
         ...
+    }
+    ```
+
+- `pickle/game/stats`
+    ---
+    Returns the game statistics of a user associated with a specific game ID.
+
+    **params**:
+    - `game_id`: the game ID of the game to request
+    - `user_id`: the user ID to request the stats of
+
+    **returns**:
+    ```js
+    {
+        "swing_min":(swing_min),
+        "swing_max":(swing_max),
+        "swing_avg":(swing_avg),
+        "hit_modeX":(hit_modeX),
+        "hit_modeY":(hit_modeY),
+        "hit_avgX":(hit_avgX),
+        "hit_avgY":(hit_avgY)
     }
     ```
 
@@ -166,6 +187,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Used to register a game in the database. All information about the game must be provided. Returns the game ID of the newly registered game.
 
     **params**:
+    - `timestamp`: Unix timestamp (int) of when the game began
+    - `game_type`: an int representing the game type
     - `winner_id`: user ID of the winning player
     - `loser_id`: user ID of the losing played
     - `winner_points`: the number of points scored by the winning player
@@ -174,4 +197,24 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {"game_id":(game_id)}
+    ```
+
+- `pickle/game/registerStats`
+    ---
+    Registers game stats for a specific user associated with a specific game
+
+    **params**:
+    - `user_id`: the user ID of the stats to record
+    - `game_id`: the game ID of the game
+    - `swing_min`: minimum swing speed
+    - `swing_max`: maximum swing speed
+    - `swing_avg`: average swing speed
+    - `hit_modeX`: x coordinate of mode hit position
+    - `hit_modeY`: y coordinate of mode hit position
+    - `hit_avgX`: x coordinate of average hit position
+    - `hit_avgY`: y coordinate of average hit position
+
+    **returns**:
+    ```js
+    {"success":(true/false)}
     ```

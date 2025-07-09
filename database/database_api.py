@@ -4,49 +4,103 @@ import hashlib
 import base64
 
 class restAPI:
+    """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
 
-    class ValidationError(Exception):
-        def __init__(self, val, dataType):
-            self.message = f'data validation error for value "{val}" to type "{dataType}"'
+    class APIError(Exception):
+        """An error triggered by the restAPI itself, including an HTTP error code"""
+
+        def __init__(self, message: str, code: int):
+            """Creates an exception for an error triggered by the database, including HTTP error code
+
+            Args:
+                message (str): Message to include in the exception
+                code (int): HTTP status code to send with the response message
+            """
+            self.message = message
+            self.code = code
             super().__init__(self.message)
 
 
-    def __init__(self, dbFile = 'pickle.db', useAuth = True):
-        self.dbFile = dbFile
-        self.dbCon = sqlite3.connect(self.dbFile)
-        self.cursor = self.dbCon.cursor()
-        self.useAuth = useAuth
-        self.apiKey_list = {}
+    def __init__(self, dbFile = 'pickle.db', useAuth = True, clearDB = False):
+        """Creates a RESTful API instance and loads an attached SQLite database
 
+        Args:
+            dbFile (str, optional): Filepath to the SQLite database file. Defaults to 'pickle.db' in the pwd.
+            useAuth (bool, optional): Set to False to disable authentication checks. Defaults to True.
+        """
+        if clearDB and os.path.isfile(dbFile):
+            os.remove(dbFile)
 
-    def check_str(self, string: str):
-        if string.find("'") == -1:
-            return string
+        self._database = sqlite3.connect(dbFile)
+        self._dbCursor = self._database.cursor()
+        self._useAuth = useAuth
+        self.__apiKeys = {}
+
+        if clearDB:
+            self._init_db()
+
         
-        else:
-            raise self.ValidationError(string, 'str')
+    def handle_request(self, uri:str, params:dict, api_key:str = None):
+        """Handles an API request given a url endpoint and parameters
 
-    def check_int(self, val):
-        print(f'Checking int: {val}')
+        Args:
+            url (str): The api endpoint to post to, in URL format. should start with '/pickle/'
+            params (dict): Dictionary of parameters used by the endpoint
+            api_key (str, optional): API key for authenticating user. Defaults to None (unauthenticated).
+
+        Raises:
+            self.APIError: Any error triggered by the API itself, such as invalid user ID or authentication required
+
+        Returns:
+            dict: dictionary of return values (dependent on endpoint)
+        """
         try:
-            return int(val)
-        
-        except ValueError as error:
-            raise self.ValidationError(val, 'int')
+            uri_parts = uri[1:].split('/',1)
+            if uri_parts[0] != 'pickle':
+                raise self.APIError(f'Base endpoint must be "pickle/": {uri_parts[0]}', 404)
+            
+            endpoint = uri_parts[1].replace('/', '_')
 
-    def check_float(self, val):
-        try:
-            return float(val)
+            if self._useAuth and endpoint != "user_auth":
+                sender_id = self._checkApiKey(api_key)
+                params['sender_id'] = sender_id
+
+                if not sender_id:
+                    raise self.APIError('Authentication required, please obtain an API ket through pickle/user/auth', 401)
+            
+            func = getattr(self, "_api_" + endpoint, None)
+            if func:
+                return func(params)
+            
+            else:
+                raise self.APIError(f'Endpoint not found: {uri}', 404)
         
-        except ValueError as error:
-            raise self.ValidationError(val, 'float')
+        except Exception as error:
+            del params
+            del api_key
+            raise error
+
+
+    def _init_db(self):
+        self._dbCursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, salt BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
+        self._dbCursor.execute('CREATE TABLE games(game_id INT, timestamp INT, game_type INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
+        self._dbCursor.execute('CREATE TABLE user_game_stats(user_id INT, game_id INT, swing_min REAL, swing_max REAL, swing_avg REAL, hit_modeX REAL, hit_modeY REAL, hit_avgX REAL, hit_avgY REAL)')
+        self._dbCursor.execute('CREATE TABLE friends(userA INT, userB INT)')
+
+        pass_hash, salt = self.gen_password_hash('root')
+        self._dbCursor.execute("INSERT INTO users VALUES (0, 'admin', ?, ?, 0, NULL, NULL, NULL)", (pass_hash, salt))
+        self._database.commit()
         
-    def check_username(self, username: str):
-        return username not in ('admin', 'deleted_user')
+        
+    def _check_username(self, username: str):
+        return (5 <= len(username) <= 25) and (username not in ('admin', 'deleted_user'))
     
-    def is_username_existing(self, username: str):
-        self.cursor.execute("SELECT username FROM users WHERE username=?", (username,))
-        return self.cursor.fetchone() is not None
+    def _check_password(self, password: str):
+        return (len(password) >= 10) and (password.find('password') == -1)
+    
+    def _is_username_existing(self, username: str):
+        self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))
+        return self._dbCursor.fetchone() is not None
 
     @staticmethod
     def gen_password_hash(password:str):
@@ -54,9 +108,9 @@ class restAPI:
         hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return hash, salt
     
-    def check_password(self, username:str, password:str):
-        self.cursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
-        data = self.cursor.fetchone()
+    def _check_userAuth(self, username:str, password:str):
+        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        data = self._dbCursor.fetchone()
         if not data:
             return False
 
@@ -64,32 +118,32 @@ class restAPI:
         salt = data[1]
         userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return userHash == dbHash
+    
+    def _checkApiKey(self, apiKey):
+        user_id = self.__apiKeys.get(apiKey)
+        return user_id
         
-    def is_user_valid(self, user_id):
-        self.cursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
-        valid = self.cursor.fetchone()
+    def _is_user_valid(self, user_id):
+        self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
+        valid = self._dbCursor.fetchone()
         return valid and valid[0]
     
-    def is_user_deleted(self, user_id):
-        self.cursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
-        deleted = self.cursor.fetchone()
+    def _is_user_deleted(self, user_id):
+        self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+        deleted = self._dbCursor.fetchone()
         return deleted and deleted[0] == 'deleted_user'
     
-    def are_users_friends(self, userA, userB):
-        self.cursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
-        is_friend = self.cursor.fetchone()
+    def _are_users_friends(self, userA, userB):
+        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
+        is_friend = self._dbCursor.fetchone()
 
         if is_friend:
             return True
         else:
             return False
     
-    def checkApiKey(self, apiKey):
-        user_id = self.apiKey_list.get(apiKey)
-        return user_id
-    
-    def user_canView(self, sender_id, user_id):
-        if not self.useAuth:
+    def _user_canView(self, sender_id, user_id):
+        if not self._useAuth:
             return True
 
         if not sender_id:
@@ -98,11 +152,10 @@ class restAPI:
         if sender_id == 0 or sender_id == user_id:
             return True
         
-        return self.are_users_friends(sender_id, user_id)
+        return self._are_users_friends(sender_id, user_id)
     
-    
-    def user_canEdit(self, sender_id, user_id):
-        if not self.useAuth or sender_id == 0:
+    def _user_canEdit(self, sender_id, user_id):
+        if not self._useAuth or sender_id == 0:
             return True
 
         if not sender_id:
@@ -112,37 +165,12 @@ class restAPI:
             return True
         
         return sender_id == user_id
-        
-
-
-    def handle_request(self, url:str, params:dict, api_key:str = None):
-
-        url_parts = url[1:].split('/',1)
-        if url_parts[0] != 'pickle':
-            return f'Base endpoint must be "pickle/": {url_parts[0]}', 404
-        
-        endpoint = url_parts[1].replace('/', '_')
-
-        if self.useAuth and endpoint != "user_auth":
-            sender_id = self.checkApiKey(api_key)
-            params['sender_id'] = sender_id
-
-            if not sender_id:
-                return f'Authentication required, please obtain an API ket through pickle/user/auth', 401
-        
-        func = getattr(self, "api_" + endpoint, None)
-        if func:
-            return func(params)
-        
-        else:
-            return f'Endpoint not found: {url}', 404
     
 
-    def api_user_get(self, params: dict):
+    def _api_user_get(self, params: dict):
         if 'user_id' not in params:
-            return f'Invalid parameters for GET pickle/user, must include user ID: {params}', 405
+            raise self.APIError(f'Invalid parameters for pickle/user/get, must include user ID: {params}', 400)
         
-
         user_ids = params['user_id']
         if type(user_ids) is int:
             user_ids = [user_ids]
@@ -150,11 +178,11 @@ class restAPI:
         result_dict = {}
         for user_id in user_ids:
 
-            if not self.user_canView(params.get('sender_id'), user_id):
-                return f'Access forbidden to user ID {user_id}', 403
+            if not self._is_user_deleted(user_id) and not self._is_user_valid(user_id):
+                raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
-            if not self.is_user_deleted(user_id) and not self.is_user_valid(user_id):
-                return f'User ID {user_id} is not a valid user', 404
+            if not self._user_canView(params.get('sender_id'), user_id):
+                raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
             
             if 'objects' in params:
                 objects = params['objects']
@@ -164,93 +192,96 @@ class restAPI:
             results = {}
             for object in objects:
                 if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
-                    self.cursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
-                    results[object] = self.cursor.fetchone()[0]
+                    self._dbCursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
+                    results[object] = self._dbCursor.fetchone()[0]
 
                 else:
-                    return f'ERROR: invalid object requested: {object}', 400
+                    raise self.APIError(f'ERROR: invalid object requested: {object}', 400)
             
             result_dict[user_id] = results
 
-        return result_dict, 200
+        return result_dict
     
     
-    def api_user_set(self, params: dict):
+    def _api_user_set(self, params: dict):
         if 'user_id' not in params:
-            return f'Invalid parameters for PUT pickle/user, must include user ID: {params}', 400
+            raise self.APIError(f'Invalid parameters for PUT pickle/user, must include user ID: {params}', 400)
         
-        user_id = self.check_int(params['user_id'])
+        user_id = int(params['user_id'])
         
-        if not self.user_canEdit(params.get('sender_id'), user_id):
-            return f'Access forbidden to user ID {user_id}', 403
+        if not self._user_canEdit(params.get('sender_id'), user_id):
+            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         for param, val in params.items():
 
             if param == 'username':
-                if not self.check_username(val):
-                    return f'Invalid username {val}', 400
+                if not self._check_username(val):
+                    raise self.APIError(f'Invalid username {val}', 400)
                 
-                if self.is_username_existing(val):
-                    return f'Username {val} already exists', 403
+                if self._is_username_existing(val):
+                    raise self.APIError(f'Username {val} already exists', 403)
 
-                self.cursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
+                self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
 
             elif param != 'user_id':
                 print(f'Invalid object parameter: {param}={val}')
 
-        self.dbCon.commit()
-        return {'success':True}, 200
+        self._database.commit()
+        return {'success':True}
     
 
-    def api_user_create(self, params: dict):
+    def _api_user_create(self, params: dict):
         if 'username' not in params or 'password' not in params:
-            return f'Invalid parameters for POST pickle/user, must include username and password: {params}', 400
+            raise self.APIError(f'Invalid parameters for POST pickle/user, must include username and password: {params}', 400)
         
-        username = self.check_str(params['username'])
-        password = self.check_str(params['password'])
+        username = params['username']
+        password = params['password']
         # TODO: password authentication
         # TODO: check that username doesn't already exist
 
-        if not self.check_username(username):
-            return f'Invalid username {username}', 400
+        if not self._check_username(username):
+            raise self.APIError(f'Invalid username {username}', 400)
         
-        if self.is_username_existing(username):
-            return f'Username {username} already exists', 403
+        if self._is_username_existing(username):
+            raise self.APIError(f'Username {username} already exists', 403)
+        
+        if not self._check_password(password):
+            raise self.APIError(f'Invalid password "{password}", must be at least 10 characters long.', 400)
 
         pass_hash, salt = self.gen_password_hash(password)
 
-        self.cursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
-        user_id = self.cursor.fetchone()[0] + 1
+        self._dbCursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
+        user_id = self._dbCursor.fetchone()[0] + 1
 
-        self.cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
-        self.dbCon.commit()
-        return {'user_id':user_id}, 200
+        self._dbCursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
+        self._database.commit()
+        return {'user_id':user_id}
     
 
-    def api_user_delete(self, params: dict):
+    def _api_user_delete(self, params: dict):
         if 'user_id' not in params:
-            return f'Invalid parameters for DELETE pickle/user, must include user ID: {params}', 400
+            raise self.APIError(f'Invalid parameters for DELETE pickle/user, must include user ID: {params}', 400)
         
-        user_id = self.check_int(params['user_id'])
+        user_id = int(params['user_id'])
         
-        if not self.user_canEdit(params.get('sender_id'), user_id):
-            return f'Access forbidden to user ID {user_id}', 403
+        if not self._user_canEdit(params.get('sender_id'), user_id):
+            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
-        self.cursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
-        self.dbCon.commit()
-        return {'success':True}, 200
+        self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
+        self._database.commit()
+        return {'success':True}
             
     
-    def api_user_id(self, params: dict):
+    def _api_user_id(self, params: dict):
         
         if len(params) != 1 or 'username' not in params:
-            return 'GET pickle/user/id requires the parameter "username"', 400
+            raise self.APIError('GET pickle/user/id requires the parameter "username"', 400)
         
         usernames = params['username']
         if type(usernames) is not list:
@@ -258,154 +289,154 @@ class restAPI:
 
         result_dict = {}
         for username in usernames:
-            if not self.check_username(username):
-                return f'Invalid username {username}', 400
+            if not self._check_username(username):
+                raise self.APIError(f'Invalid username {username}', 400)
             
-            self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-            user_id = self.cursor.fetchone()
+            self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+            user_id = self._dbCursor.fetchone()
 
             if user_id:
-                if self.user_canView(params.get('sender_id'), user_id[0]):
+                if self._user_canView(params.get('sender_id'), user_id[0]):
                     result_dict[username] = user_id[0]
                 else:
-                    return f'Access forbidden to user ID {user_id[0]}', 403
+                    raise self.APIError(f'Access forbidden to user ID {user_id[0]}', 403)
             
             else:
-                return f'Username not found: {username}', 404
+                raise self.APIError(f'Username not found: {username}', 404)
             
-        return result_dict, 200
+        return result_dict
         
         
-    def api_user_friends(self, params: dict):
+    def _api_user_friends(self, params: dict):
         if 'user_id' not in params:
-            return 'ERROR: pickle/user/friends must include "user_id" parameter', 400
+            raise self.APIError('ERROR: pickle/user/friends must include "user_id" parameter', 400)
 
-        user_id = self.check_int(params['user_id'])
+        user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
-        self.cursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
-        friend_list = self.cursor.fetchall()
+        self._dbCursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
+        friend_list = self._dbCursor.fetchall()
 
         username_list = []
         for id in friend_list:
-            self.cursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
-            username_list.append(self.cursor.fetchone()[0])
+            self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
+            username_list.append(self._dbCursor.fetchone()[0])
 
         result = {}
         for i in range(0, len(friend_list)):
             result[friend_list[i][0]] = {'username':username_list[i]}
         
-        return result, 200
+        return result
     
 
-    def api_user_addFriend(self, params: dict):
+    def _api_user_addFriend(self, params: dict):
         if 'user_id' not in params:
-            return 'ERROR: pickle/user/friends must include "user_id" parameter', 400
+            raise self.APIError('ERROR: pickle/user/friends must include "user_id" parameter', 400)
 
-        user_id = self.check_int(params['user_id'])
+        user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
         if 'friend_id' in params:
-            friend_id = self.check_int(params['friend_id'])
-            if not self.is_user_valid(friend_id):
-                return f'User ID {friend_id} is not a valid user', 404
+            friend_id = int(params['friend_id'])
+            if not self._is_user_valid(friend_id):
+                raise self.APIError(f'User ID {friend_id} is not a valid user', 404)
 
         elif 'friend_username' in params:
-            username = self.check_str(params['friend_username'])
+            username = params['friend_username']
 
-            self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-            raw_id = self.cursor.fetchone()
+            self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+            raw_id = self._dbCursor.fetchone()
             if not raw_id:
-                return f'ERROR: unable to find user with username "{username}"', 404
+                raise self.APIError(f'ERROR: unable to find user with username "{username}"', 404)
             
             friend_id = raw_id[0]
 
         else:
-            return 'ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400
+            raise self.APIError('ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400)
         
-        if not self.user_canView(params.get('sender_id'), friend_id):
-            return f'Access forbidden to user ID {friend_id}', 403
+        if not self._user_canView(params.get('sender_id'), friend_id):
+            raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
         
-        self.cursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
-        self.dbCon.commit()
-        return {'success':True}, 200
+        self._dbCursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
+        self._database.commit()
+        return {'success':True}
     
 
-    def api_user_removeFriend(self, params: dict):
+    def _api_user_removeFriend(self, params: dict):
         if 'user_id' not in params:
-            return 'ERROR: pickle/user/friends must include "user_id" parameter', 400
+            raise self.APIError('ERROR: pickle/user/friends must include "user_id" parameter', 400)
 
-        user_id = self.check_int(params['user_id'])
+        user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         if 'friend_id' not in params:
-            return 'ERROR: DELETE pickle/user/friends must include "friend_id" parameter', 400
+            raise self.APIError('ERROR: DELETE pickle/user/friends must include "friend_id" parameter', 400)
 
-        friend_id = self.check_int(params['friend_id'])
+        friend_id = int(params['friend_id'])
 
-        if not self.is_user_valid(friend_id):
-            return f'User ID {friend_id} is not a valid user', 404
+        if not self._is_user_valid(friend_id):
+            raise self.APIError(f'User ID {friend_id} is not a valid user', 404)
         
-        self.cursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
-        self.dbCon.commit()
-        return {'success':True}, 200
+        self._dbCursor.execute("DELETE FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
+        self._database.commit()
+        return {'success':True}
         
 
-    def api_user_games(self, params: dict):
-        user_id = self.check_int(params['user_id'])
+    def _api_user_games(self, params: dict):
+        user_id = int(params['user_id'])
 
-        if not self.is_user_valid(user_id):
-            return f'User ID {user_id} is not a valid user', 404
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
         if 'won' in params:
             if params['won'] == True:
-                self.cursor.execute("SELECT game_id FROM games WHERE winner_id=?", (user_id,))
+                self._dbCursor.execute("SELECT game_id FROM games WHERE winner_id=?", (user_id,))
 
             elif params['won'] == False:
-                self.cursor.execute("SELECT game_id FROM games WHERE loser_id=?", (user_id,))
+                self._dbCursor.execute("SELECT game_id FROM games WHERE loser_id=?", (user_id,))
 
             else:
-                return f'Invalid value for parameter "won" in GET pickle/user/games: {user_id}', 400
+                raise self.APIError(f'Invalid value for parameter "won" in GET pickle/user/games: {user_id}', 400)
             
         else:
-            self.cursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
+            self._dbCursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
 
-        games_list = self.cursor.fetchall()
+        games_list = self._dbCursor.fetchall()
         result = {'game_ids': [game[0] for game in games_list]}
-        return result, 200
+        return result
         
     
-    def api_user_auth(self, params: dict):
+    def _api_user_auth(self, params: dict):
         if 'username' not in params or 'password' not in params:
-            return f'Invalid parameters for POST pickle/user, must include username and password: {params}', 400
+            raise self.APIError(f'Invalid parameters for POST pickle/user, must include username and password: {params}', 400)
         
-        username = self.check_str(params['username'])
-        password = self.check_str(params['password'])
+        username = params['username']
+        password = params['password']
 
-        if self.check_password(username, password):
-            self.cursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-            user_id = self.cursor.fetchone()[0]
+        if self._check_userAuth(username, password):
+            self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
+            user_id = self._dbCursor.fetchone()[0]
 
             rand_val = os.urandom(12)
             api_key = base64.b64encode(rand_val).decode('utf-8')
-            self.apiKey_list[api_key] = user_id
+            self.__apiKeys[api_key] = user_id
 
             print(f'Authentication successful for user {username}')
-            return {'success':True, 'apiKey':api_key}, 200
+            return {'success':True, 'apiKey':api_key}
         
         else:
-            return f'Authentication failed for user {username}', 401
+            raise self.APIError(f'Authentication failed for user {username}', 401)
     
 
-    def api_game_get(self, params: dict):
+    def _api_game_get(self, params: dict):
         if 'game_id' not in params:
-            return f'ERROR: GET pickle/game must specify game_id parameter!', 400
+            raise self.APIError(f'ERROR: GET pickle/game must specify game_id parameter!', 400)
         
         game_ids = params['game_id']
         if type(game_ids) is not list:
@@ -413,73 +444,130 @@ class restAPI:
 
         result_dict = {}
         for game_id in game_ids:
-            self.cursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
-            game = self.cursor.fetchone()
+            self._dbCursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
+            game = self._dbCursor.fetchone()
 
             if not game:
-                return f'Game for game_id {game_id} not found', 404
+                raise self.APIError(f'Game for game_id {game_id} not found', 404)
 
-            result_dict[game[0]] = {'winner_id':game[1], 'loser_id':game[2], 'winner_points':game[3], 'loser_points':game[4]}
+            result_dict[game[0]] = {'timestamp':game[1], 'game_type':game[2], 'winner_id':game[3], 'loser_id':game[4], 'winner_points':game[5], 'loser_points':game[6]}
         
-        return result_dict, 200
+        return result_dict
     
 
-    def api_game_register(self, params: dict):
-        if any(key not in params for key in ('winner_id', 'loser_id', 'winner_points', 'loser_points')):
+    def _api_game_stats(self, params: dict):
+        if 'game_id' not in params:
+            raise self.APIError(f'ERROR: GET pickle/game/stats must specify game_id parameter!', 400)
+        
+        game_id = int(params['game_id'])
+        user_id = int(params['user_id'])
+
+        self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (game_id, user_id))
+        stats = self._dbCursor.fetchone()
+
+        if not stats:
+            raise self.APIError(f'Game for game_id {game_id} played by user_id {user_id} not found', 404)
+
+        return {
+            "swing_min":(stats[2]),
+            "swing_max":(stats[3]),
+            "swing_avg":(stats[4]),
+            "hit_modeX":(stats[5]),
+            "hit_modeY":(stats[6]),
+            "hit_avgX":(stats[7]),
+            "hit_avgY":(stats[8])
+        }
+
+
+    def _api_game_register(self, params: dict):
+        if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
             print(f'Invalid parameters for POST pickle/game: {params}')
 
-        winner_id = self.check_int(params['winner_id'])
-        loser_id = self.check_int(params['loser_id'])
-        winner_points = self.check_int(params['winner_points'])
-        loser_points = self.check_int(params['loser_points'])
+        timestamp = int(params['timestamp'])
+        game_type = int(params['game_type'])
+        winner_id = int(params['winner_id'])
+        loser_id = int(params['loser_id'])
+        winner_points = int(params['winner_points'])
+        loser_points = int(params['loser_points'])
 
-        if not self.is_user_valid(winner_id):
-            return f'User ID {winner_id} is not a valid user', 404
+        if not self._is_user_valid(winner_id):
+            raise self.APIError(f'User ID {winner_id} is not a valid user', 404)
         
-        if not self.is_user_valid(loser_id):
-            return f'User ID {loser_id} is not a valid user', 404
+        if not self._is_user_valid(loser_id):
+            raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
 
-        self.cursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
-        game_id_raw = self.cursor.fetchone()
+        self._dbCursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
+        game_id_raw = self._dbCursor.fetchone()
         if game_id_raw:
             game_id = game_id_raw[0] + 1
         else:
             game_id = 0
 
-        self.cursor.execute(
-            "INSERT INTO games VALUES (?, ?, ?, ?, ?)",
-            (game_id, winner_id, loser_id, winner_points, loser_points))
-        self.dbCon.commit()
+        self._dbCursor.execute(
+            "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (game_id, timestamp, game_type, winner_id, loser_id, winner_points, loser_points))
+        self._database.commit()
 
         self.updateUserGameStats(winner_id)
         self.updateUserGameStats(loser_id)
 
-        return {'game_id':game_id}, 200
+        return {'game_id':game_id}
+
+
+    def _api_game_registerStats(self, params: dict):
+        # if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
+        #     print(f'Invalid parameters for POST pickle/game: {params}')
+
+        user_id = int(params['user_id'])
+        game_id = int(params['game_id'])
+        swing_min = float(params['swing_min'])
+        swing_max = float(params['swing_max'])
+        swing_avg = float(params['swing_avg'])
+        hit_modeX = float(params['hit_modeX'])
+        hit_modeY = float(params['hit_modeY'])
+        hit_avgX = float(params['hit_avgX'])
+        hit_avgY = float(params['hit_avgY'])
+
+        if not self._is_user_valid(user_id):
+            raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+        
+        # if not self._is_user_valid(loser_id):
+        #     raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
+
+        self._dbCursor.execute(
+            "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, game_id, swing_min, swing_max, swing_avg, hit_modeX, hit_modeY, hit_avgX, hit_avgY))
+        self._database.commit()
+
+        # self.updateUserGameStats(winner_id)
+        # self.updateUserGameStats(loser_id)
+
+        return {'success':True}
 
         
-    def api_coffee(self, params: dict):
-        return "Why...? We don't serve coffee here, just... idk, go find a cafe or something, maybe there's a pickleball court nearby.", 418
+    def _api_coffee(self, params: dict):
+        raise self.APIError("Why...? We don't serve coffee here, just... idk, go find a cafe or something, maybe there's a pickleball court nearby.", 418)
         
 
     def updateUserGameStats(self, user_id):
 
-        if not self.is_user_valid(user_id):
+        if not self._is_user_valid(user_id):
             return False
 
-        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
-        gamesPlayed = self.cursor.fetchone()[0]
+        self._dbCursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id))
+        gamesPlayed = self._dbCursor.fetchone()[0]
 
-        self.cursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=?', (user_id,))
-        gamesWon = self.cursor.fetchone()[0]
+        self._dbCursor.execute('SELECT COUNT(*) FROM games WHERE winner_id=?', (user_id,))
+        gamesWon = self._dbCursor.fetchone()[0]
 
-        self.cursor.execute('SELECT AVG(CASE WHEN winner_id=? THEN winner_points ELSE loser_points END) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id, user_id))
-        averageScore = self.cursor.fetchone()[0]
+        self._dbCursor.execute('SELECT AVG(CASE WHEN winner_id=? THEN winner_points ELSE loser_points END) FROM games WHERE winner_id=? OR loser_id=?', (user_id, user_id, user_id))
+        averageScore = self._dbCursor.fetchone()[0]
 
-        self.cursor.execute('UPDATE users SET gamesPlayed=?, gamesWon=?, averageScore=? WHERE user_id=?', (gamesPlayed, gamesWon, averageScore, user_id))
-        self.dbCon.commit()
+        self._dbCursor.execute('UPDATE users SET gamesPlayed=?, gamesWon=?, averageScore=? WHERE user_id=?', (gamesPlayed, gamesWon, averageScore, user_id))
+        self._database.commit()
         return True
 
 
     def close(self):
-        self.cursor.close()
-        self.dbCon.close()
+        self._dbCursor.close()
+        self._database.close()

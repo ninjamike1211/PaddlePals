@@ -8,9 +8,10 @@ class DatabaseServer(BaseHTTPRequestHandler):
 
     def do_POST(self):
         print(f'{self.command} {self.path}')
-        print(self.headers)
 
         try:
+            print(f"Message Headers:\n{self.headers}")
+
             body_length = int(self.headers['Content-Length'])
             body = self.rfile.read(body_length)
             print(body)
@@ -26,19 +27,19 @@ class DatabaseServer(BaseHTTPRequestHandler):
                 if auth_message_split[0] == 'Bearer':
                     apiKey = auth_message_split[1]
 
-            response, code = pickleAPI.handle_request(self.path, params, apiKey)
-            print(response, code)
+            response = pickleAPI.handle_request(self.path, params, apiKey)
+            print(response)
 
-            if code == 200:
-                self.send_response(code)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(bytes(json.dumps(response), 'utf-8'))
-            else:
-                self.send_error(code, str(response))
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(bytes(json.dumps(response), 'utf-8'))
+
+        except restAPI.APIError as error:
+            self.send_error(error.code, f'API Error: {error}')
 
         except Exception as error:
-            self.send_error(400, f'Error: {error}')
+            self.send_error(400, f'Non-API Error: {error}')
 
 
 if __name__ == "__main__":
