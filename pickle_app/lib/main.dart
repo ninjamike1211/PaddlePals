@@ -18,7 +18,7 @@ void main() {
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.6.19.60:80";
+  final String url = "http://10.0.0.188:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -643,7 +643,7 @@ class GamePage extends StatefulWidget{
 }
 
 class _GamePageState extends State<GamePage> {
-  final game = Game();
+  var game = Game();
   final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
   final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
 
@@ -663,11 +663,27 @@ class _GamePageState extends State<GamePage> {
     return title;
   }
 
-  //class Game variable
-  //title changes if game is started
-  //change page look if no connectedDevice
+  void startStandardGame(){
+    setState(() {
+      game.startGame();
+    });
+    print("game started");
+  }
 
-  //subscribe to characteristics here
+  void incMyScore(){
+    setState(() {
+      game.incMyScore();
+    });
+    print("My Score: ${game.myScore}");
+  }
+
+  void incOppScore(){
+    setState(() {
+      game.incOppScore();
+    });
+    print("Opp score: ${game.opponentScore}");
+  }
+
   @override
   void initState() {
     super.initState();
@@ -766,6 +782,18 @@ class _GamePageState extends State<GamePage> {
             ],
           ),
           Text("Message 1"),
+          ElevatedButton(
+              onPressed: startStandardGame,
+              child: Text("Start Game")
+          ),
+          ElevatedButton(
+              onPressed: incMyScore,
+              child: Text("Inc my score")
+          ),
+          ElevatedButton(
+              onPressed: incOppScore,
+              child: Text("Inc opp score")
+          ),
         ],
       ),
     );
@@ -858,9 +886,14 @@ class _SocialPageState extends State<SocialPage> {
   }
 }
 
-class HistoryPage extends StatelessWidget{
+class HistoryPage extends StatefulWidget{
   const HistoryPage({super.key});
 
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -868,33 +901,7 @@ class HistoryPage extends StatelessWidget{
         title: const Text('History\n(View Stats from Database)'),
       ),
       body: Center(
-        child: FutureBuilder<Map<String, dynamic>>(
-          future: api.getUserRequest(2),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const CircularProgressIndicator();
-            } else if (snapshot.hasError) {
-              return Text('Error: ${snapshot.error}');
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Text('No user data available');
-            }
-
-            final userData = snapshot.data!;
-            final Map<String, dynamic> userMap = userData['2'];
-            final user = User.fromJson(userMap);
-
-            return Text(
-              'Username: ${user.username}\n'
-                  'Games Played: ${user.gamesPlayed}\n'
-                  'Games Won: ${user.gamesWon}\n'
-                  'Average Points per Game: ${user.avgScore}',
-              style: TextStyle(
-                fontSize: 18,
-              ),
-            );
-          },
-        ), //FutureBuilder
-      ), //Center
+      ),
     );
   }
 }
