@@ -1,15 +1,19 @@
 import pytest
+import requests
+
 from database import database_setup
+from database import database_server
 from database.database_api import restAPI
 
-def setup_api(tmp_path, users=None):
+def setup(tmp_path, users=None):
     db_path = tmp_path / 'pickle.db'
     database_setup.setup_db(db_path, users)
-    return restAPI(db_path, useAuth=False)
+    api = restAPI(db_path, useAuth=False)
+    return database_server.PickleServer(api, 8080)
 
 def test_coffee(tmp_path):
-    api = setup_api(tmp_path)
+    server = setup(tmp_path)
 
-    with pytest.raises(restAPI.APIError) as apiError:
-        api.handle_request('/pickle/coffee', None)
-    assert apiError.value.code == 418
+    with server:
+        response = requests.post("http://localhost:8080/pickle/coffee", json={})
+        assert response.status_code == 418

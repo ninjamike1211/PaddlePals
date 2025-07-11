@@ -61,7 +61,7 @@ class restAPI:
             
             endpoint = uri_parts[1].replace('/', '_')
 
-            if self._useAuth and endpoint != "user_auth":
+            if self._useAuth and (endpoint not in ("user_auth", 'coffee')):
                 sender_id = self._checkApiKey(api_key)
                 params['sender_id'] = sender_id
 
