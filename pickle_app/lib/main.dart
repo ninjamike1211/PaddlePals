@@ -270,8 +270,142 @@ class APIRequests {
     else{
       throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
     }
-
   }
+
+  Future<Map<String, dynamic>> getUsersGames(String un) async {
+    Map<String, dynamic> user_id = await getUserID(un);
+    final int user_id_num = user_id[un];
+
+    Map<String, dynamic> params = {
+      'user_id': user_id_num
+    };
+
+    print(params);
+    String endpoint = "/pickle/user/games";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> getGameInfo(int gameID) async {
+    Map<String, dynamic> params = {
+      'game_id': gameID
+    };
+
+    print(params);
+    String endpoint = "/pickle/game/get";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> getGameStats(int gameID, String un) async {
+    Map<String, dynamic> user_id = await getUserID(un);
+    final int user_id_num = user_id[un];
+
+    Map<String, dynamic> params = {
+      'game_id': gameID,
+      'user_id' : user_id_num
+    };
+
+    print(params);
+    String endpoint = "/pickle/game/stats";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> getUsername(int userId) async {
+
+    Map<String, dynamic> params = {
+      'user_id': userId,
+      'values' : 'username'
+    };
+
+    print(params);
+    String endpoint = "/pickle/user/get";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+
 }
 
 final api = APIRequests();
@@ -1029,7 +1163,104 @@ class HistoryPage extends StatefulWidget{
 
 class _HistoryPageState extends State<HistoryPage> {
   List<String> statsToView = ["Games", "Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
-  
+  String? selectedStat;
+  List<int>? gameIds;
+  List<int>? winIds;
+
+  @override
+  void initState() {
+    super.initState();
+    //once ui is built, load api calls and context to get games history
+    WidgetsBinding.instance.addPostFrameCallback((_) => loadGamesHistory());
+  }
+
+  Future<void> loadGamesHistory() async {
+    final currentUsername = context.read<User>().username;
+    final data = await api.getUsersGames(currentUsername);
+
+    List<dynamic> gameIdDynamic = data['game_ids'] ?? [];
+    print("Raw gameIdDynamic: $gameIdDynamic");
+    print("Types: ${gameIdDynamic.map((e) => e.runtimeType).toList()}");
+    List<int> gameIdNums = gameIdDynamic.cast<int>();
+
+    if (mounted) {
+      setState(() {
+        gameIds = gameIdNums;
+      });
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getWins(String username) async {
+    List<Map<String, dynamic>> winsList = [];
+    List<int> tempWinIds = [];
+
+    if (gameIds != null){
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds){
+          Map<String, dynamic> gameMap = await api.getGameInfo(game);
+          print(gameMap);
+          String gameIdString = game.toString();
+          var winnerId = gameMap[gameIdString]?["winner_id"];
+          Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
+          String winnerIdString =  winnerId.toString();
+          String winnerName = winnerMap[winnerIdString]['username'];
+          if (winnerName == username){
+            tempWinIds.add(game);
+            int loserID = gameMap[gameIdString]['loser_id'];
+            Map<String, dynamic> loserMap = await api.getUsername(loserID);
+            String loserIdString = loserID.toString();
+            String loserName = loserMap[loserIdString]['username'];
+            gameMap['loser_id'] = loserName;
+
+            winsList.add(gameMap);
+          }
+      }
+    }
+    // print(winsList);
+    winIds = tempWinIds;
+    return winsList;
+  }
+
+  Widget winsListWidget(List<Map<String, dynamic>> winsList) {
+    print("in widget");
+    print("winsList length: ${winsList.length}");
+    return Container(
+      color: Colors.blue,
+      child: ListView.builder(
+        itemCount: winsList.length,
+        itemBuilder: (context, index) {
+          final win = winsList[index];
+          print(win);
+          return ListTile(
+            title: Text("${win[winIds?[index].toString()]['timestamp']} Opponent: ${win['loser_id']}"),
+            subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
+          );
+        }
+      ),
+    );
+  }
+
+  Widget errorWidget() => Center(child: Text('Selection Error'));
+
+  Future<List<Map<String, dynamic>>> _getSelectedHistory(String username) async {
+    if(selectedStat == "Wins"){
+      print("get wins");
+      final wins = await getWins(username);
+      print(wins);
+      return wins;
+    }
+    // else if(selectedStat == "Losses"){
+    //   print("get losses");
+    // }
+    // else if(selectedStat == "Points Scored"){
+    //   print("get points scored");
+    // }
+    else{
+      print("can't get value: ${selectedStat}");
+      return [];
+    }
+
+  }
 
 
   @override
@@ -1039,6 +1270,46 @@ class _HistoryPageState extends State<HistoryPage> {
         title: const Text('History\n(View Stats from Database)'),
       ),
       body: Center(
+        child: Column(
+          children: [
+            DropdownButton<String>(
+                hint: Text("Select a stat to view"),
+                value: selectedStat,
+                onChanged: (String? newValue){
+                  setState(() {
+                    selectedStat = newValue;
+                  });
+                },
+                items: statsToView.map((String value) {
+                  return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value)
+                  );
+                }).toList(),
+            ),
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _getSelectedHistory(context.read<User>().username),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return CircularProgressIndicator();
+                    } else if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    } else {
+                      final data = snapshot.data!;
+                      print(data);
+                      switch(selectedStat){
+                        case "Wins":
+                          return winsListWidget(data);
+                        default:
+                          return errorWidget();
+                      }
+                    }
+                },
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
