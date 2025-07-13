@@ -743,6 +743,10 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'PicklePals',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.tealAccent),
+        scaffoldBackgroundColor: Colors.white,
+      ),
       initialRoute: '/', // Start at Login
       routes: {
         '/': (context) => LoginPage(),
@@ -778,9 +782,6 @@ class _MyHomePageState extends State<MyHomePage> {
       case 3:
         page = ProfilePage();
         break;
-      case 4:
-        page = LoginPage();
-        break;
       default:
         throw UnimplementedError('no widget for $selectedIndex');
     }
@@ -810,9 +811,6 @@ class _MyHomePageState extends State<MyHomePage> {
                           icon: Icon(Icons.person),
                           label: Text('ProfileS')
                       ),
-                      NavigationRailDestination(
-                          icon: Icon(Icons.add),
-                          label: Text('Add User'))
                     ],
                     selectedIndex: selectedIndex,
                     onDestinationSelected: (value) {
@@ -824,7 +822,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 Expanded(
                   child: Container(
-                    color: Theme.of(context).colorScheme.primaryContainer,
+                    color: Colors.white,
                     child: page,
                   ),
                 ),
@@ -1166,6 +1164,7 @@ class _HistoryPageState extends State<HistoryPage> {
   String? selectedStat;
   List<int>? gameIds;
   List<int>? winIds;
+  List<int>? lossIds;
 
   @override
   void initState() {
@@ -1221,11 +1220,41 @@ class _HistoryPageState extends State<HistoryPage> {
     return winsList;
   }
 
+  Future<List<Map<String, dynamic>>> getLosses(String username) async {
+    List<Map<String, dynamic>> lossesList = [];
+    List<int> tempLossIds = [];
+
+    if (gameIds != null){
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds){
+        Map<String, dynamic> gameMap = await api.getGameInfo(game);
+        String gameIdString = game.toString();
+        var loserId = gameMap[gameIdString]?["loser_id"];
+        Map<String, dynamic> loserMap = await api.getUsername(loserId);
+        String loserIdString =  loserId.toString();
+        String loserName = loserMap[loserIdString]['username'];
+        if (loserName == username){
+          tempLossIds.add(game);
+          int winnerID = gameMap[gameIdString]['winner_id'];
+          Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
+          String winnerIdString = winnerID.toString();
+          String winnerName = winnerMap[winnerIdString]['username'];
+          gameMap['winner_id'] = winnerName;
+
+          lossesList.add(gameMap);
+        }
+      }
+    }
+    // print(winsList);
+    lossIds = tempLossIds;
+    return lossesList;
+  }
+
   Widget winsListWidget(List<Map<String, dynamic>> winsList) {
     print("in widget");
     print("winsList length: ${winsList.length}");
     return Container(
-      color: Colors.blue,
+      color: Theme.of(context).cardColor,
       child: ListView.builder(
         itemCount: winsList.length,
         itemBuilder: (context, index) {
@@ -1240,18 +1269,39 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  Widget errorWidget() => Center(child: Text('Selection Error'));
+  Widget lossesListWidget(List<Map<String, dynamic>> lossesList) {
+    print("in widget");
+    print("lossesList length: ${lossesList.length}");
+    return Container(
+      color: Colors.blue,
+      child: ListView.builder(
+          itemCount: lossesList.length,
+          itemBuilder: (context, index) {
+            final loss = lossesList[index];
+            print(loss);
+            return ListTile(
+              title: Text("${loss[lossIds?[index].toString()]['timestamp']} Opponent: ${loss['winner_id']}"),
+              subtitle: Text("Score: ${loss[lossIds?[index].toString()]['winner_points']} - ${loss[lossIds?[index].toString()]['loser_points']} Game Type: ${loss[lossIds?[index].toString()]['game_type']}"),
+            );
+          }
+      ),
+    );
+  }
+
+  Widget errorWidget() => Center(child: Text('Choose a Stat'));
 
   Future<List<Map<String, dynamic>>> _getSelectedHistory(String username) async {
     if(selectedStat == "Wins"){
-      print("get wins");
+      // print("get wins");
       final wins = await getWins(username);
-      print(wins);
+      // print(wins);
       return wins;
     }
-    // else if(selectedStat == "Losses"){
-    //   print("get losses");
-    // }
+    else if(selectedStat == "Losses"){
+      print("get losses");
+      final losses = await getLosses(username);
+      return losses;
+    }
     // else if(selectedStat == "Points Scored"){
     //   print("get points scored");
     // }
@@ -1267,7 +1317,7 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History\n(View Stats from Database)'),
+        title: const Text('History'),
       ),
       body: Center(
         child: Column(
@@ -1301,6 +1351,8 @@ class _HistoryPageState extends State<HistoryPage> {
                       switch(selectedStat){
                         case "Wins":
                           return winsListWidget(data);
+                        case "Losses":
+                          return lossesListWidget(data);
                         default:
                           return errorWidget();
                       }
@@ -1385,12 +1437,15 @@ class _ProfilePageState extends State<ProfilePage> {
       body: Center(
         child: Column(
           children: [
+            SizedBox(height: 16),
             Container(
               width: 100,
               height: 100,
-              color: Colors.blue,
+              child: Icon(
+                  Icons.account_circle,
+                  size: 72
+              ),
             ),
-            SizedBox(height: 16),
             Text(
                 "Hello, ${user.username}"
             ),
