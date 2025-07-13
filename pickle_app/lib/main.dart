@@ -1160,7 +1160,7 @@ class HistoryPage extends StatefulWidget{
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  List<String> statsToView = ["Games", "Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
+  List<String> statsToView = ["Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
   String? selectedStat;
   List<int>? gameIds;
   List<int>? winIds;
@@ -1210,7 +1210,7 @@ class _HistoryPageState extends State<HistoryPage> {
             String loserIdString = loserID.toString();
             String loserName = loserMap[loserIdString]['username'];
             gameMap['loser_id'] = loserName;
-
+            gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
             winsList.add(gameMap);
           }
       }
@@ -1240,7 +1240,7 @@ class _HistoryPageState extends State<HistoryPage> {
           String winnerIdString = winnerID.toString();
           String winnerName = winnerMap[winnerIdString]['username'];
           gameMap['winner_id'] = winnerName;
-
+          gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
           lossesList.add(gameMap);
         }
       }
@@ -1248,6 +1248,44 @@ class _HistoryPageState extends State<HistoryPage> {
     // print(winsList);
     lossIds = tempLossIds;
     return lossesList;
+  }
+
+  Future<List<Map<String, dynamic>>> getOpponents(String username) async {
+    List<Map<String, dynamic>> opponentsMaps = [];
+
+    if (gameIds != null) {
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds) {
+        Map<String, dynamic> gameMap = await api.getGameInfo(game);
+        String gameIdString = game.toString();
+        var loserId = gameMap[gameIdString]?["loser_id"];
+        Map<String, dynamic> loserMap = await api.getUsername(loserId);
+        String loserIdString = loserId.toString();
+        String loserName = loserMap[loserIdString]['username'];
+        //user loses
+        if (loserName == username) {
+          int winnerID = gameMap[gameIdString]['winner_id'];
+          Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
+          String winnerIdString = winnerID.toString();
+          String winnerName = winnerMap[winnerIdString]['username'];
+          gameMap['opponent_name'] = winnerName;
+          gameMap['my_points'] =  gameMap[gameIdString]['loser_points'];
+          gameMap['opp_points'] = gameMap[gameIdString]['winner_points'];
+          gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
+          opponentsMaps.add(gameMap);
+        }
+        //user wins
+        else{
+          gameMap['opponent_name'] = loserName;
+          gameMap['my_points'] = gameMap[gameIdString]['winner_points'];
+          gameMap['opp_points'] = gameMap[gameIdString]['loser_points'];
+          gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
+          opponentsMaps.add(gameMap);
+        }
+      }
+    }
+
+    return opponentsMaps;
   }
 
   Widget winsListWidget(List<Map<String, dynamic>> winsList) {
@@ -1261,7 +1299,7 @@ class _HistoryPageState extends State<HistoryPage> {
           final win = winsList[index];
           print(win);
           return ListTile(
-            title: Text("${win[winIds?[index].toString()]['timestamp']} Opponent: ${win['loser_id']}"),
+            title: Text("${win['date_time']} Opponent: ${win['loser_id']}"),
             subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
           );
         }
@@ -1273,15 +1311,32 @@ class _HistoryPageState extends State<HistoryPage> {
     print("in widget");
     print("lossesList length: ${lossesList.length}");
     return Container(
-      color: Colors.blue,
+      color: Theme.of(context).cardColor,
       child: ListView.builder(
           itemCount: lossesList.length,
           itemBuilder: (context, index) {
             final loss = lossesList[index];
             print(loss);
             return ListTile(
-              title: Text("${loss[lossIds?[index].toString()]['timestamp']} Opponent: ${loss['winner_id']}"),
+              title: Text("${loss['date_time']} Opponent: ${loss['winner_id']}"),
               subtitle: Text("Score: ${loss[lossIds?[index].toString()]['winner_points']} - ${loss[lossIds?[index].toString()]['loser_points']} Game Type: ${loss[lossIds?[index].toString()]['game_type']}"),
+            );
+          }
+      ),
+    );
+  }
+
+  Widget oppsListWidget(List<Map<String, dynamic>> oppsList) {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: ListView.builder(
+          itemCount: oppsList.length,
+          itemBuilder: (context, index) {
+            final opp = oppsList[index];
+            print(opp);
+            return ListTile(
+              title: Text("${opp['date_time']}: ${opp['opponent_name']}"),
+              subtitle: Text("Me-Opponent: ${opp['my_points']} - ${opp['opp_points']} Game Type: ${opp[gameIds?[index].toString()]['game_type']}"),
             );
           }
       ),
@@ -1301,6 +1356,10 @@ class _HistoryPageState extends State<HistoryPage> {
       print("get losses");
       final losses = await getLosses(username);
       return losses;
+    }
+    else if(selectedStat == "Opponents"){
+      final opps = await getOpponents(username);
+      return opps;
     }
     // else if(selectedStat == "Points Scored"){
     //   print("get points scored");
@@ -1353,6 +1412,8 @@ class _HistoryPageState extends State<HistoryPage> {
                           return winsListWidget(data);
                         case "Losses":
                           return lossesListWidget(data);
+                        case "Opponents":
+                          return oppsListWidget(data);
                         default:
                           return errorWidget();
                       }
