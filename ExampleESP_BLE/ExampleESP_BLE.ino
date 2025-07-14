@@ -29,6 +29,17 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 
+// Library for button communication
+#include <Button2.h>
+
+// Button pins
+#define button_increment_pin 18
+#define button_decrement_pin 17
+
+// Create Button2 buttons
+Button2 buttonIncrement;
+Button2 buttonDecrement;
+
 String device_name = "ESP32-BT";
 
 //BLE server name
@@ -306,6 +317,13 @@ void setup() {
   // Calibrate gyro
   calibrateGyro();
 
+  // Setup buttons and their click handlers
+  buttonIncrement.begin(button_increment_pin);
+  buttonIncrement.setClickHandler(clickHandler);
+
+  buttonDecrement.begin(button_decrement_pin);
+  buttonDecrement.setClickHandler(clickHandler);
+
   // Create the BLE Device
   BLEDevice::init(bleServerName);
 
@@ -347,6 +365,10 @@ void loop() {
     // High-frequency swing polling
     static unsigned long lastPollTime = 0;
 
+    // Poll for button presses
+    buttonIncrement.loop();
+    buttonDecrement.loop();
+
     // Use a 10ms loop to check for swings
     if (millis() - lastPollTime >= 10) {
       lastPollTime = millis();
@@ -369,9 +391,6 @@ void loop() {
       // Calculate magnitude of total acceleration - we wsill use this along with the swingThreshold to record a swing
       float accelMagnitude = sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2));
 
-      // Anti-flip - if acceleration in the y direction is above a threshold, just return
-      // This should only occur when the paddle is dropped or flipped around.
-
       if (!swingActive) {
         // Start of a new swing
         if (newSpeed > swingThreshold && accelMagnitude > 2.0 && (millis() - lastSwingEndTime > swingCooldown)) {
@@ -386,7 +405,7 @@ void loop() {
         }
 
         // End swing if speed drops below threshold (or fixed duration elapsed)
-        if (newSpeed < swingThreshold || millis() - swingStartTime > 300) {
+        if (newSpeed < swingThreshold || millis() - swingStartTime > 700) {
           swingActive = false;
           lastSwingEndTime = millis();
 
@@ -421,13 +440,13 @@ void loop() {
         mpu.getEvent(&a, &g, &temp);
 
         // Generate value from 0 to 100 for probability
-        int randProbability = random(0, 100);
+        // int randProbability = random(0, 100);
 
         // If value >= 50, increment, otherwise, don't
         // Basically 50/50 probability every 5 seconds if score is updated
-        if (randProbability >= 50) {
-          incrementPoints();
-        }
+        // if (randProbability >= 50) {
+          // incrementPoints();
+        // }
 
         // Send stats over in string format
         pointsString = String(pointsThisGame);
@@ -479,6 +498,22 @@ void incrementPoints() {
   pointsThisGame++;
 }
 
+void clickHandler(Button2& btn) {
+  if (btn == buttonIncrement) {
+    pointsThisGame++;
+    Serial.println("Increment Button pressed - score incremented");
+  }
+  else if (btn == buttonDecrement) {
+    if (pointsThisGame > 0) {
+      pointsThisGame--;
+      Serial.println("Decrement Button pressed - score decremented");
+    }
+    else {
+      Serial.println("Score is currently 0 - ignoring.");
+    }
+  }
+}
+
 float checkMaxSwingSpeed(float swingSpeed) {
   if (swingSpeed > currentMaxSwingSpeed) {
     currentMaxSwingSpeed = swingSpeed;
@@ -523,4 +558,3 @@ float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, boo
 
   return finalSwingSpeed;
 }
-
