@@ -18,7 +18,7 @@ void main() {
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.22.133:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -1288,6 +1288,23 @@ class _HistoryPageState extends State<HistoryPage> {
     return opponentsMaps;
   }
 
+  Future<List<Map<String, dynamic>>> getSwingSpeeds(String username) async {
+    List<Map<String, dynamic>> swingsList = [];
+
+    if (gameIds != null){
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds){
+        Map<String, dynamic> gameStatMap = await api.getGameStats(game, username);
+        Map<String, dynamic> gameInfoMap = await api.getGameInfo(game);
+        String gameIdString = game.toString();
+        gameStatMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameInfoMap[gameIdString]['timestamp'] * 1000);
+        swingsList.add(gameStatMap);
+      }
+    }
+
+    return swingsList;
+  }
+
   Widget winsListWidget(List<Map<String, dynamic>> winsList) {
     print("in widget");
     print("winsList length: ${winsList.length}");
@@ -1343,6 +1360,22 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  Widget swingSpeedWidget(List<Map<String, dynamic>> swingsList) {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: ListView.builder(
+          itemCount: swingsList.length,
+          itemBuilder: (context, index) {
+            final swing = swingsList[index];
+            return ListTile(
+              title: Text("${swing['date_time']} (unit)"),
+              subtitle: Text("Average: ${swing[gameIds?[index].toString()]['swing_avg']} Min: ${swing[gameIds?[index].toString()]['swing_min']} Max: ${swing[gameIds?[index].toString()]['swing_max']}"),
+            );
+          }
+      ),
+    );
+  }
+
   Widget errorWidget() => Center(child: Text('Choose a Stat'));
 
   Future<List<Map<String, dynamic>>> _getSelectedHistory(String username) async {
@@ -1361,9 +1394,10 @@ class _HistoryPageState extends State<HistoryPage> {
       final opps = await getOpponents(username);
       return opps;
     }
-    // else if(selectedStat == "Points Scored"){
-    //   print("get points scored");
-    // }
+    else if(selectedStat == "Swing Speeds"){
+      final swings = await getSwingSpeeds(username);
+      return swings;
+    }
     else{
       print("can't get value: ${selectedStat}");
       return [];
@@ -1414,6 +1448,8 @@ class _HistoryPageState extends State<HistoryPage> {
                           return lossesListWidget(data);
                         case "Opponents":
                           return oppsListWidget(data);
+                        case "Swing Speeds":
+                          return swingSpeedWidget(data);
                         default:
                           return errorWidget();
                       }
