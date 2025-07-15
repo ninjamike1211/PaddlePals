@@ -21,13 +21,14 @@ class PickleServer():
         self.server = HTTPServer(('',self.port),http_handler)
         self.server.serve_forever()
 
+        self.api.close()
+
     def start_server(self):
         self.server_thread.start()
 
     def close(self):
         self.server.shutdown()
         self.server.server_close()
-        del self.api
 
     def __enter__(self):
         self.start_server()
@@ -85,7 +86,7 @@ class PickleServer():
 if __name__ == "__main__":
     auth = not 'noAuth' in sys.argv
     clear = 'clearDB' in sys.argv
-    pickleAPI = restAPI(useAuth=auth, clearDB=clear)
+    pickleAPI = restAPI(dbFile='database/pickle.db', useAuth=auth, clearDB=clear)
 
     # try:
     #     server = PickleServer(80, useAuth = auth, clearDB = clear)
