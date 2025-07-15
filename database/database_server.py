@@ -86,14 +86,12 @@ class PickleServer():
 if __name__ == "__main__":
     auth = not 'noAuth' in sys.argv
     clear = 'clearDB' in sys.argv
+    altPort = 'altPort' in sys.argv
     pickleAPI = restAPI(dbFile='database/pickle.db', useAuth=auth, clearDB=clear)
 
-    # try:
-    #     server = PickleServer(80, useAuth = auth, clearDB = clear)
-    # except PermissionError:
-    server = PickleServer(pickleAPI, 8080)
-
+    server = PickleServer(pickleAPI, 8080 if altPort else 80)
     server.start_server()
+
     print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
 
     try:
