@@ -608,3 +608,7 @@ class restAPI:
     def close(self):
         self._dbCursor.close()
         self._database.close()
+
+    def __del__(self):
+        self._dbCursor.close()
+        self._database.close()

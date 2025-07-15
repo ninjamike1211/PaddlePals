@@ -8,13 +8,20 @@ import time
 from database_api import restAPI
 
 class PickleServer():
-    def __init__(self, api:restAPI, port:int):
-        self.api = api
+    def __init__(self, port:int, dbFile:str = 'pickle.db', useAuth:bool = True, clearDB:bool = False):
         self.port = port
+        self.dbFile = dbFile
+        self.useAuth = useAuth
+        self.clearDB = clearDB
 
-        http_handler = partial(self.PickleHandler, api)
-        self.server = HTTPServer(('',port),http_handler)
-        self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.server_thread = threading.Thread(target=self.run, daemon=True)
+
+    def run(self):
+        self.api = restAPI(self.dbFile, self.useAuth, self.clearDB)
+
+        http_handler = partial(self.PickleHandler, self.api)
+        self.server = HTTPServer(('',self.port),http_handler)
+        self.server.serve_forever()
 
     def start_server(self):
         self.server_thread.start()
@@ -22,12 +29,16 @@ class PickleServer():
     def close(self):
         self.server.shutdown()
         self.server.server_close()
-        self.api.close()
+        del self.api
 
     def __enter__(self):
         self.start_server()
+        return self
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
+        self.close()
+
+    def __del__(self):
         self.close()
 
 
@@ -78,13 +89,13 @@ if __name__ == "__main__":
     clear = 'clearDB' in sys.argv
     pickleAPI = restAPI(useAuth=auth, clearDB=clear)
 
-    try:
-        server = PickleServer(pickleAPI, 80)
-    except PermissionError:
-        server = PickleServer(pickleAPI, 8080)
+    # try:
+    #     server = PickleServer(80, useAuth = auth, clearDB = clear)
+    # except PermissionError:
+    server = PickleServer(8080, useAuth = auth, clearDB = clear)
 
-    print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
     server.start_server()
+    print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
 
     try:
         while True:
