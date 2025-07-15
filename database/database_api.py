@@ -327,9 +327,25 @@ class restAPI:
             self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
             username_list.append(self._dbCursor.fetchone()[0])
 
+        games_list = []
+        winRate_list = []
+        for id in friend_list:
+            self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)", (user_id, id[0], id[0], user_id))
+            gameCount = self._dbCursor.fetchone()[0]
+            games_list.append(gameCount)
+
+            if gameCount > 0:
+                self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE winner_id=? AND loser_id=?", (user_id, id[0]))
+                winCount = self._dbCursor.fetchone()[0]
+                winRate_list.append(winCount / gameCount)
+
+            else:
+                winRate_list.append(None)
+                
+
         result = {}
         for i in range(0, len(friend_list)):
-            result[friend_list[i][0]] = {'username':username_list[i]}
+            result[friend_list[i][0]] = {'username':username_list[i], 'gamesPlayed':games_list[i], 'winRate':winRate_list[i]}
         
         return result
     
@@ -363,6 +379,12 @@ class restAPI:
         
         if not self._user_canView(params.get('sender_id'), friend_id):
             raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
+        
+        self._dbCursor.execute("SELECT COUNT(*) FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
+        existing_count = self._dbCursor.fetchone()[0]
+
+        if existing_count > 0:
+            raise self.APIError('Users are already friends', 403)
         
         self._dbCursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
         self._database.commit()

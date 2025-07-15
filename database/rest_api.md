@@ -87,7 +87,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(friend_id)":{"username":(username), "gamesPlayed":(gamesPlayed), "winPercentage":(winPercentage)},
+        "(friend_id)":{"username":(username), "gamesPlayed":(gamesPlayed), "winRate":(winPercentage)},
         ...
     }
     ```

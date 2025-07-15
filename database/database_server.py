@@ -81,7 +81,7 @@ class PickleServer():
                 self.send_error(error.code, f'API Error: {error}')
 
             except Exception as error:
-                self.send_error(400, f'Non-API Error: {error}')
+                self.send_error(500, f'Non-API Error: {error}')
 
 
 if __name__ == "__main__":
