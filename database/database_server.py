@@ -87,20 +87,15 @@ if __name__ == "__main__":
     auth = not 'noAuth' in sys.argv
     clear = 'clearDB' in sys.argv
     altPort = 'altPort' in sys.argv
+
     pickleAPI = restAPI(dbFile='database/pickle.db', useAuth=auth, clearDB=clear)
-
     server = PickleServer(pickleAPI, 8080 if altPort else 80)
-    server.start_server()
+    with server:
+        print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
 
-    print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
+        try:
+            while True:
+                time.sleep(0.5)
 
-    try:
-        while True:
-            time.sleep(0.5)
-
-    except KeyboardInterrupt:
-        print("Keyboard Interrupt, shutting down server!")
-
-    finally:
-        server.close()
-        sys.exit()
+        except KeyboardInterrupt:
+            print("Keyboard Interrupt, shutting down server!")

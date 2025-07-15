@@ -13,9 +13,7 @@ def setup_server(tmp_path, users=None, auth=False):
     return database_server.PickleServer(api, 8080)
 
 def test_login_root(tmp_path):
-    server = setup_server(tmp_path, auth=True)
-
-    with server:
+    with setup_server(tmp_path, auth=True):
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'admin', 'password':'root'})
         assert response.status_code == 200
 
@@ -25,8 +23,6 @@ def test_login_root(tmp_path):
         assert response_dict['apiKey']
 
 def test_coffee(tmp_path):
-    server = setup_server(tmp_path)
-
-    with server:
+    with setup_server(tmp_path):
         response = requests.post("http://localhost:8080/pickle/coffee", json={})
         assert response.status_code == 418
