@@ -3,16 +3,25 @@ from functools import partial
 import threading
 import json
 import sys
+import time
 
 from database.database_api import restAPI
 
 class PickleServer():
     def __init__(self, api:restAPI, port:int):
+        self.port = port
         self.api = api
 
-        http_handler = partial(self.PickleHandler, api)
-        self.server = HTTPServer(('',port),http_handler)
-        self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.server_thread = threading.Thread(target=self.run, daemon=True)
+        self.api.close()
+
+    def run(self):
+        self.api.openCon()
+        http_handler = partial(self.PickleHandler, self.api)
+        self.server = HTTPServer(('',self.port),http_handler)
+        self.server.serve_forever()
+
+        self.api.close()
 
     def start_server(self):
         self.server_thread.start()
@@ -20,12 +29,15 @@ class PickleServer():
     def close(self):
         self.server.shutdown()
         self.server.server_close()
-        self.api.close()
 
     def __enter__(self):
         self.start_server()
+        return self
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
+        self.close()
+
+    def __del__(self):
         self.close()
 
 
@@ -68,27 +80,29 @@ class PickleServer():
                 self.send_error(error.code, f'API Error: {error}')
 
             except Exception as error:
-                self.send_error(400, f'Non-API Error: {error}')
+                self.send_error(500, f'Non-API Error: {error}')
 
 
 if __name__ == "__main__":
     auth = not 'noAuth' in sys.argv
     clear = 'clearDB' in sys.argv
-    pickleAPI = restAPI(useAuth=auth, clearDB=clear)
+    pickleAPI = restAPI(dbFile='database/pickle.db', useAuth=auth, clearDB=clear)
 
-    try:
-        server = PickleServer(pickleAPI, 80)
-    except PermissionError:
-        server = PickleServer(pickleAPI, 8080)
+    # try:
+    #     server = PickleServer(80, useAuth = auth, clearDB = clear)
+    # except PermissionError:
+    server = PickleServer(pickleAPI, 80)
 
     server.start_server()
+    print(f'PicklePals server started on port {server.port} with authentication {"enabled" if auth else "disabled"}')
 
     try:
         while True:
-            pass
+            time.sleep(0.5)
 
     except KeyboardInterrupt:
         print("Keyboard Interrupt, shutting down server!")
 
     finally:
         server.close()
+        sys.exit()

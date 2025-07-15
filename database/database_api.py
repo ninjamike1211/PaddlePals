@@ -28,6 +28,8 @@ class restAPI:
             dbFile (str, optional): Filepath to the SQLite database file. Defaults to 'pickle.db' in the pwd.
             useAuth (bool, optional): Set to False to disable authentication checks. Defaults to True.
         """
+        self.dbFile = dbFile
+
         if clearDB and os.path.isfile(dbFile):
             os.remove(dbFile)
 
@@ -327,9 +329,25 @@ class restAPI:
             self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
             username_list.append(self._dbCursor.fetchone()[0])
 
+        games_list = []
+        winRate_list = []
+        for id in friend_list:
+            self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)", (user_id, id[0], id[0], user_id))
+            gameCount = self._dbCursor.fetchone()[0]
+            games_list.append(gameCount)
+
+            if gameCount > 0:
+                self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE winner_id=? AND loser_id=?", (user_id, id[0]))
+                winCount = self._dbCursor.fetchone()[0]
+                winRate_list.append(winCount / gameCount)
+
+            else:
+                winRate_list.append(None)
+                
+
         result = {}
         for i in range(0, len(friend_list)):
-            result[friend_list[i][0]] = {'username':username_list[i]}
+            result[friend_list[i][0]] = {'username':username_list[i], 'gamesPlayed':games_list[i], 'winRate':winRate_list[i]}
         
         return result
     
@@ -364,6 +382,12 @@ class restAPI:
         if not self._user_canView(params.get('sender_id'), friend_id):
             raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
         
+        self._dbCursor.execute("SELECT COUNT(*) FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
+        existing_count = self._dbCursor.fetchone()[0]
+
+        if existing_count > 0:
+            raise self.APIError('Users are already friends', 403)
+        
         self._dbCursor.execute("INSERT INTO friends VALUES (?, ?)", (user_id, friend_id))
         self._database.commit()
         return {'success':True}
@@ -393,7 +417,6 @@ class restAPI:
 
     def _api_user_games(self, params: dict):
         user_id = int(params['user_id'])
-
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
@@ -401,34 +424,49 @@ class restAPI:
             opponent_id = int(params['opponent_id'])
             if not self._is_user_id_valid(opponent_id):
                 raise self.APIError(f'Opponent user ID {opponent_id} is not a valid user', 404)
-            
-            if 'won' in params:
-                if params['won'] == True:
-                    self._dbCursor.execute("SELECT game_id FROM games WHERE winner_id=? AND loser_id=?", (user_id, opponent_id))
+        else:
+            opponent_id = None
+        
+        request = "SELECT game_id FROM games WHERE "
+        request_params = []
 
-                elif params['won'] == False:
-                    self._dbCursor.execute("SELECT game_id FROM games WHERE loser_id=? AND winner_id=?", (user_id, opponent_id))
+        if 'won' in params:
+            if bool(params['won']) == True:
+                request += "winner_id=?"
+                request_params.append(user_id)
 
-                else:
-                    raise self.APIError(f'Invalid value for parameter "won" in GET pickle/user/games: {user_id}', 400)
-                
+                if opponent_id:
+                    request += " AND loser_id=?"
+                    request_params.append(opponent_id)
+
             else:
-                self._dbCursor.execute("SELECT game_id FROM games WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)", (user_id, opponent_id, opponent_id, user_id))
+                request += "loser_id=?"
+                request_params.append(user_id)
+
+                if opponent_id:
+                    request += " AND winner_id=?"
+                    request_params.append(opponent_id)
         
         else:
-            if 'won' in params:
-                if params['won'] == True:
-                    self._dbCursor.execute("SELECT game_id FROM games WHERE winner_id=?", (user_id,))
+            if opponent_id:
+                request += "((winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?))"
+                request_params.extend((user_id, opponent_id, opponent_id, user_id))
 
-                elif params['won'] == False:
-                    self._dbCursor.execute("SELECT game_id FROM games WHERE loser_id=?", (user_id,))
-
-                else:
-                    raise self.APIError(f'Invalid value for parameter "won" in GET pickle/user/games: {user_id}', 400)
-                
             else:
-                self._dbCursor.execute("SELECT game_id FROM games WHERE winner_id=? OR loser_id=?", (user_id, user_id))
+                request += "(winner_id=? OR loser_id=?)"
+                request_params.extend((user_id, user_id))
 
+
+        if 'min_time' in params:
+            request += " AND timestamp >=?"
+            request_params.append(int(params['min_time']))
+
+        if 'max_time' in params:
+            request += " AND timestamp <=?"
+            request_params.append(int(params['max_time']))
+
+
+        self._dbCursor.execute(request, request_params)
         games_list = self._dbCursor.fetchall()
         result = {'game_ids': [game[0] for game in games_list]}
         return result
@@ -596,7 +634,11 @@ class restAPI:
         self._dbCursor.execute('UPDATE users SET gamesPlayed=?, gamesWon=?, averageScore=? WHERE user_id=?', (gamesPlayed, gamesWon, averageScore, user_id))
         self._database.commit()
         return True
+    
 
+    def openCon(self):
+        self._database = sqlite3.connect(self.dbFile)
+        self._dbCursor = self._database.cursor()
 
     def close(self):
         self._dbCursor.close()

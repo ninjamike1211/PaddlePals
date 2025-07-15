@@ -18,7 +18,7 @@ void main() {
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.6.22.133:80";
+  final String url = "http://10.0.0.188:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
