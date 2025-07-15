@@ -8,17 +8,15 @@ import time
 from database_api import restAPI
 
 class PickleServer():
-    def __init__(self, port:int, dbFile:str = 'pickle.db', useAuth:bool = True, clearDB:bool = False):
+    def __init__(self, api:restAPI, port:int):
         self.port = port
-        self.dbFile = dbFile
-        self.useAuth = useAuth
-        self.clearDB = clearDB
+        self.api = api
 
         self.server_thread = threading.Thread(target=self.run, daemon=True)
+        self.api.close()
 
     def run(self):
-        self.api = restAPI(self.dbFile, self.useAuth, self.clearDB)
-
+        self.api.openCon()
         http_handler = partial(self.PickleHandler, self.api)
         self.server = HTTPServer(('',self.port),http_handler)
         self.server.serve_forever()
@@ -92,7 +90,7 @@ if __name__ == "__main__":
     # try:
     #     server = PickleServer(80, useAuth = auth, clearDB = clear)
     # except PermissionError:
-    server = PickleServer(8080, useAuth = auth, clearDB = clear)
+    server = PickleServer(pickleAPI, 8080)
 
     server.start_server()
     print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')

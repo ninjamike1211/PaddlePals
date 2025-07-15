@@ -28,6 +28,8 @@ class restAPI:
             dbFile (str, optional): Filepath to the SQLite database file. Defaults to 'pickle.db' in the pwd.
             useAuth (bool, optional): Set to False to disable authentication checks. Defaults to True.
         """
+        self.dbFile = dbFile
+
         if clearDB and os.path.isfile(dbFile):
             os.remove(dbFile)
 
@@ -632,7 +634,11 @@ class restAPI:
         self._dbCursor.execute('UPDATE users SET gamesPlayed=?, gamesWon=?, averageScore=? WHERE user_id=?', (gamesPlayed, gamesWon, averageScore, user_id))
         self._database.commit()
         return True
+    
 
+    def openCon(self):
+        self._database = sqlite3.connect(self.dbFile)
+        self._dbCursor = self._database.cursor()
 
     def close(self):
         self._dbCursor.close()
