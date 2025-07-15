@@ -397,6 +397,13 @@ class restAPI:
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
+        request = "SELECT game_id FROM games WHERE "
+        request_params = ()
+
+        if 'min_time' in params:
+            request += " AND timestamp >= ?"
+
+        
         if 'opponent_id' in params:
             opponent_id = int(params['opponent_id'])
             if not self._is_user_id_valid(opponent_id):

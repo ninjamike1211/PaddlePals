@@ -3,12 +3,14 @@ from functools import partial
 import threading
 import json
 import sys
+import time
 
-from .database_api import restAPI
+from database_api import restAPI
 
 class PickleServer():
     def __init__(self, api:restAPI, port:int):
         self.api = api
+        self.port = port
 
         http_handler = partial(self.PickleHandler, api)
         self.server = HTTPServer(('',port),http_handler)
@@ -81,14 +83,16 @@ if __name__ == "__main__":
     except PermissionError:
         server = PickleServer(pickleAPI, 8080)
 
+    print(f'PicklePals server started on port {server.port} with authentication {'enabled' if auth else 'disabled'}')
     server.start_server()
 
     try:
         while True:
-            pass
+            time.sleep(0.5)
 
     except KeyboardInterrupt:
         print("Keyboard Interrupt, shutting down server!")
 
     finally:
         server.close()
+        sys.exit()

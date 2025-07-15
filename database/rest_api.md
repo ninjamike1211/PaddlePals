@@ -87,7 +87,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(friend_id)":{"username":(username)},
+        "(friend_id)":{"username":(username), "gamesPlayed":(gamesPlayed), "winPercentage":(winPercentage)},
         ...
     }
     ```
@@ -127,6 +127,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
     - `opponent_id`: *(optional)*: filter games by the user ID of a specific opponent
+    - `min_time` *(optional)*: minimum timestamp to search through
+    - `max_time` *(optional)*: maximum timestamp to search through
 
     **returns**:
     ```js
@@ -224,5 +226,3 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     ```js
     {"success":(true/false)}
     ```
-
-"user_id":, "game_id":, "swing_count":, "swing_hits":, "swing_min":, "swing_max":, "swing_avg":, "hit_modeX":, "hit_modeY":, "hit_avgX":, "hit_avgY":,
