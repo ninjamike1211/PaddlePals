@@ -166,25 +166,31 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/game/stats`
     ---
-    Returns the game statistics of a user associated with a specific game ID.
+    Returns the game statistics of a user associated with a specific game ID. Returns `None` for any games which don't have registered game stats
 
     **params**:
-    - `game_id`: the game ID of the game to request
     - `user_id`: the user ID to request the stats of
+    - `game_id` *(optional)*: the game ID(s) of the game(s) to request as an int or list of ints
 
     **returns**:
     ```js
     {
-        "swing_count":(swing_count),
-        "swing_hits":(swing_hit),
-        "hit_percentage":(hit_percentage),
-        "swing_min":(swing_min),
-        "swing_max":(swing_max),
-        "swing_avg":(swing_avg),
-        "hit_modeX":(hit_modeX),
-        "hit_modeY":(hit_modeY),
-        "hit_avgX":(hit_avgX),
-        "hit_avgY":(hit_avgY)
+        "(game_id)": {
+            "timestamp":(timestamp),
+            "swing_count":(swing_count),
+            "swing_hits":(swing_hit),
+            "hit_percentage":(hit_percentage),
+            "swing_min":(swing_min),
+            "swing_max":(swing_max),
+            "swing_avg":(swing_avg),
+            "hit_modeX":(hit_modeX),
+            "hit_modeY":(hit_modeY),
+            "hit_avgX":(hit_avgX),
+            "hit_avgY":(hit_avgY)
+        },
+        ...
+        "(game_id)":null,
+        ...
     }
     ```
 

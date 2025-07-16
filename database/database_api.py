@@ -67,8 +67,11 @@ class restAPI:
                 sender_id = self._checkApiKey(api_key)
                 params['sender_id'] = sender_id
 
+                if not api_key:
+                    raise self.APIError('Authentication required, please obtain an API key through pickle/user/auth', 401)
+
                 if not sender_id:
-                    raise self.APIError('Authentication required, please obtain an API ket through pickle/user/auth', 401)
+                    raise self.APIError('API key not recognized, could be out of date or server has restarted. Try requesting another one with pickle/user/auth', 401)
             
             func = getattr(self, "_api_" + endpoint, None)
             if func:
@@ -279,6 +282,8 @@ class restAPI:
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
+        self._dbCursor.execute("DELETE FROM friends WHERE userA=? OR userB=?", (user_id, user_id))
+        self._dbCursor.execute("DELETE FROM user_game_stats WHERE user_id=?", (user_id,))
         self._database.commit()
         return {'success':True}
             
@@ -516,33 +521,46 @@ class restAPI:
     
 
     def _api_game_stats(self, params: dict):
-        if 'game_id' not in params:
-            raise self.APIError(f'ERROR: GET pickle/game/stats must specify game_id parameter!', 400)
         
-        game_id = int(params['game_id'])
         user_id = int(params['user_id'])
-
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
-        self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (game_id, user_id))
-        stats = self._dbCursor.fetchone()
+        stats = {}
+        if 'game_id' in params:
+            game_ids = params['game_id']
+            if type(game_ids) is not list:
+                game_ids = [game_ids]
 
-        if not stats:
-            raise self.APIError(f'Game for game_id {game_id} played by user_id {user_id} not found', 404)
+        else:
+            self._dbCursor.execute("SELECT game_id FROM user_game_stats WHERE user_id=?", (user_id,))
+            game_ids = [id[0] for id in self._dbCursor.fetchall()]
 
-        return {
-            "swing_count": stats[2],
-            "swing_hits": stats[3],
-            "hit_percentage": stats[3] / stats[2],
-            "swing_min": stats[4],
-            "swing_max": stats[5],
-            "swing_avg": stats[6],
-            "hit_modeX": stats[7],
-            "hit_modeY": stats[8],
-            "hit_avgX": stats[9],
-            "hit_avgY": stats[10]
-        }
+        for id in game_ids:
+                self._dbCursor.execute("SELECT timestamp FROM games WHERE game_id=?", (id,))
+                timestamp = self._dbCursor.fetchone()
+
+                if timestamp:
+                    self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (id, user_id))
+                    game_stats = self._dbCursor.fetchone()
+
+                    stats[id] = {
+                        "timestamp":timestamp[0],
+                        "swing_count": game_stats[2],
+                        "swing_hits": game_stats[3],
+                        "hit_percentage": game_stats[3] / game_stats[2],
+                        "swing_min": game_stats[4],
+                        "swing_max": game_stats[5],
+                        "swing_avg": game_stats[6],
+                        "hit_modeX": game_stats[7],
+                        "hit_modeY": game_stats[8],
+                        "hit_avgX": game_stats[9],
+                        "hit_avgY": game_stats[10]
+                    }
+                else:
+                    stats[id] = None
+
+        return stats
 
 
     def _api_game_register(self, params: dict):

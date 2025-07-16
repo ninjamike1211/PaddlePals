@@ -1,7 +1,4 @@
-import os
 import random
-import sqlite3
-import hashlib
 
 from .database_api import restAPI
 

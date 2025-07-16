@@ -119,7 +119,6 @@ def test_friends(tmp_path):
         assert response.status_code == 403
         
 
-
 def test_coffee(tmp_path):
     with setup_server(tmp_path):
         # Check if server can brew coffee
