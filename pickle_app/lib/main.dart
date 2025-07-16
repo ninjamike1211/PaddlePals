@@ -418,7 +418,7 @@ class User extends ChangeNotifier {
   int gamesPlayed;
   int gamesWon;
   double avgScore;
-  List<String> pals; //may make this a list of users???
+  List<Map<String,dynamic>> pals;
 
   User({
     required this.username,
@@ -456,11 +456,10 @@ class User extends ChangeNotifier {
 
     Map<String, dynamic> friendMap = await api.getFriends(newUserName);
 
-    List<String> friendList = [];
+    List<Map<String, dynamic>> friendList = [];
 
     friendMap.forEach((id, data) {
-      final friendUsername = data['username'];
-      friendList.add(friendUsername);
+      friendList.add(data);
     });
 
     username = userMap['username'];
@@ -468,12 +467,6 @@ class User extends ChangeNotifier {
     gamesWon = userMap['gamesWon'];
     avgScore = userMap['averageScore'];
     pals = friendList;
-
-    notifyListeners();
-  }
-
-  void notifyNewFriend(String friendUsername){
-    pals.add(friendUsername);
 
     notifyListeners();
   }
@@ -1081,6 +1074,7 @@ class _SocialPageState extends State<SocialPage> {
     try{
       var friends = await api.getFriends(username);
       print("Friends: $friends");
+      print(friends.runtimeType);
     } catch(e){
       print("error getting friends: $e");
     }
@@ -1088,10 +1082,11 @@ class _SocialPageState extends State<SocialPage> {
 
   Future<void> addFriend(String username, String friendUsername) async{
     try{
-      var success = await api.addFriend(username, friendUsername);
+      var success = await api.addFriend(username, friendUsername.trim());
       print(success["success"]);
       if(success["success"]){
         await context.read<User>().updateUserfromDatabase(username);
+        // friends = get friends
       }
       showFriends(username);
     } catch (e){
@@ -1139,8 +1134,9 @@ class _SocialPageState extends State<SocialPage> {
                     final pal = user.pals[index];
                     return ListTile(
                       leading: Icon(Icons.person),
-                      title: Text(pal),
-                      onTap: () => print('Tapped $pal'),
+                      title: Text(pal['username']),
+                      subtitle: Text("Winning %: ${pal['winRate'].toStringAsFixed(3)} Games Played: ${pal['gamesPlayed']}"),
+                      onTap: () => print('Tapped $pal'), //show dialog with start game and delete options
                     );
                 }
               ),
