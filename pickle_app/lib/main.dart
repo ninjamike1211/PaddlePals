@@ -419,6 +419,7 @@ class User extends ChangeNotifier {
   int gamesWon;
   double avgScore;
   List<Map<String,dynamic>> pals;
+  String opponent;
 
   User({
     required this.username,
@@ -426,6 +427,7 @@ class User extends ChangeNotifier {
     required this.gamesWon,
     required this.avgScore,
     this.pals = const [],  // default to empty list
+    this.opponent = ""
   });
 
   factory User.fromJson(Map<String, dynamic> json){
@@ -471,6 +473,10 @@ class User extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setOpponent(String opponentName){
+    opponent = opponentName;
+    notifyListeners();
+  }
 
 }
 
@@ -836,8 +842,23 @@ class GamePage extends StatefulWidget{
 
 class _GamePageState extends State<GamePage> {
   var game = Game();
+  bool isLoading = true;
   final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
   final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
+
+
+  void loadOpponent(){
+    if(context.read<User>().opponent != ""){
+      game.opponentName = context.read<User>().opponent;
+    }
+    else{
+      game.opponentName = "Opponent";
+    }
+
+    setState(() {
+      isLoading = false;
+    });
+  }
 
 
   String getTitle(){
@@ -936,6 +957,8 @@ class _GamePageState extends State<GamePage> {
 
     api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
 
+    context.read<User>().setOpponent("");
+
     setState(() {
       game.resetGame();
     });
@@ -946,6 +969,7 @@ class _GamePageState extends State<GamePage> {
   @override
   void initState() {
     super.initState();
+    loadOpponent();
     if(myBLE.connectedDevice != null){
       DiscoveredDevice device = myBLE.connectedDevice!;
 
@@ -1069,6 +1093,21 @@ class SocialPage extends StatefulWidget{
 class _SocialPageState extends State<SocialPage> {
 
   final TextEditingController _controller = TextEditingController();
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadUser();
+  }
+
+  Future<void> loadUser() async {
+    final username = context.read<User>().username;
+    await context.read<User>().updateUserfromDatabase(username);
+    setState(() {
+      isLoading = false;
+    });
+  }
 
   Future<void> showFriends(String username) async{
     try{
@@ -1093,6 +1132,49 @@ class _SocialPageState extends State<SocialPage> {
       print("error adding friend: $e");
     }
 
+  }
+
+  //TODO
+  void deletePal(String palName){
+    print("Delete button $palName");
+  }
+
+  void startGameWithPal(String palName){
+      print("Start game with $palName");
+      context.read<User>().setOpponent(palName);
+  }
+
+  void showOptions(String palName){
+    showDialog(
+        context: context,
+        builder: (BuildContext context){
+          return AlertDialog(
+            title: Text("Pal Options"),
+            actions: [
+              TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close the dialog
+                  },
+                  child: Text("Cancel")
+              ),
+              TextButton(
+                  onPressed: () {
+                    deletePal(palName);
+                    Navigator.of(context).pop();
+                  },
+                  child: Text("Delete")
+              ),
+              TextButton(
+                  onPressed: () {
+                    startGameWithPal(palName);
+                    Navigator.of(context).pop();
+                  },
+                  child: Text("Start Game"),
+              )
+            ],
+          );
+        }
+    );
   }
 
   @override
@@ -1123,10 +1205,6 @@ class _SocialPageState extends State<SocialPage> {
                 onPressed: () => addFriend(user.username, _controller.text),
                 child: Text("Add Friend")
             ),
-            // ElevatedButton(
-            //     onPressed: () => showFriends(user.username),
-            //     child: Text("Show Pals")
-            // ),
             Expanded(
               child: ListView.builder(
                   itemCount: user.pals.length,
@@ -1136,7 +1214,7 @@ class _SocialPageState extends State<SocialPage> {
                       leading: Icon(Icons.person),
                       title: Text(pal['username']),
                       subtitle: Text("Winning %: ${pal['winRate'].toStringAsFixed(3)} Games Played: ${pal['gamesPlayed']}"),
-                      onTap: () => print('Tapped $pal'), //show dialog with start game and delete options
+                      onTap: () => showOptions(pal['username']), //show dialog with start game and delete options
                     );
                 }
               ),
