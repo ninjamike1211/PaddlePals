@@ -63,7 +63,7 @@ class restAPI:
             
             endpoint = uri_parts[1].replace('/', '_')
 
-            if self._useAuth and (endpoint not in ("user_auth", 'coffee')):
+            if self._useAuth and (endpoint not in ("user_create", "user_auth", 'coffee')):
                 sender_id = self._checkApiKey(api_key)
                 params['sender_id'] = sender_id
 
@@ -285,7 +285,7 @@ class restAPI:
     
     def _api_user_id(self, params: dict):
         
-        if len(params) != 1 or 'username' not in params:
+        if 'username' not in params:
             raise self.APIError('GET pickle/user/id requires the parameter "username"', 400)
         
         usernames = params['username']
@@ -379,8 +379,8 @@ class restAPI:
         else:
             raise self.APIError('ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400)
         
-        if not self._user_canView(params.get('sender_id'), friend_id):
-            raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
+        # if not self._user_canView(params.get('sender_id'), friend_id):
+        #     raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
         
         self._dbCursor.execute("SELECT COUNT(*) FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
         existing_count = self._dbCursor.fetchone()[0]
