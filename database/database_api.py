@@ -138,29 +138,8 @@ class restAPI:
         return True
     
     def _is_username_existing(self, username: str):
-        self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))
-        return self._dbCursor.fetchone() is not None
-
-    @staticmethod
-    def gen_password_hash(password:str):
-        salt = bytearray(os.urandom(16))
-        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
-        return hash, salt
-    
-    def _check_userAuth(self, username:str, password:str):
-        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
-        data = self._dbCursor.fetchone()
-        if not data:
-            return False
-
-        dbHash = data[0]
-        salt = data[1]
-        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
-        return userHash == dbHash
-    
-    def _checkApiKey(self, apiKey):
-        user_id = self.__apiKeys.get(apiKey)
-        return user_id
+        self._dbCursor.execute("SELECT COUNT(*) FROM users WHERE username=?", (username,))
+        return self._dbCursor.fetchone()[0] > 0
         
     def _is_user_account_valid(self, user_id):
         self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
@@ -188,7 +167,7 @@ class restAPI:
         if not self._useAuth:
             return True
 
-        if not sender_id:
+        if sender_id is None:
             return False
         
         if sender_id == 0 or sender_id == user_id:
@@ -200,13 +179,34 @@ class restAPI:
         if not self._useAuth or sender_id == 0:
             return True
 
-        if not sender_id:
+        if sender_id is None:
             return False
         
         if sender_id == 0:
             return True
         
         return sender_id == user_id
+
+    @staticmethod
+    def gen_password_hash(password:str):
+        salt = bytearray(os.urandom(16))
+        hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return hash, salt
+    
+    def _check_userAuth(self, username:str, password:str):
+        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        data = self._dbCursor.fetchone()
+        if not data:
+            return False
+
+        dbHash = data[0]
+        salt = data[1]
+        userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
+        return userHash == dbHash
+    
+    def _checkApiKey(self, apiKey):
+        user_id = self.__apiKeys.get(apiKey)
+        return user_id
     
 
     def _api_user_get(self, params: dict):

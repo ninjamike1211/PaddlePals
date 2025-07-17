@@ -94,6 +94,175 @@ def test_check_password(tmp_path):
     assert not api._check_password('secret')
     assert not api._check_password('secret')
 
+def test_is_username_existing(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Test usernames that do exist
+    assert api._is_username_existing('admin')
+    assert api._is_username_existing('userA')
+    assert api._is_username_existing('userB')
+
+    # Test usernames that do not exist
+    assert not api._is_username_existing('userC')
+    assert not api._is_username_existing('not_a_user')
+    assert not api._is_username_existing('user')
+
+def test_is_user_account_valid(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Check existing users
+    assert not api._is_user_account_valid(-1)
+    assert not api._is_user_account_valid(0)
+    assert api._is_user_account_valid(1)
+    assert api._is_user_account_valid(2)
+
+    # Delete user and check valid
+    api._api_user_delete({'user_id':2})
+    assert api._is_user_account_valid(1)
+    assert not api._is_user_account_valid(2)
+
+def test_is_user_id_valid(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Check valid IDs
+    assert api._is_user_id_valid(-1)
+    assert not api._is_user_id_valid(0)
+    assert api._is_user_id_valid(1)
+    assert api._is_user_id_valid(2)
+
+    # Delete user and check valid
+    api._api_user_delete({'user_id':2})
+    assert api._is_user_account_valid(1)
+    assert not api._is_user_account_valid(2)
+
+def test_is_user_deleted(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Check existing users
+    assert not api._is_user_deleted(0)
+    assert not api._is_user_deleted(1)
+    assert not api._is_user_deleted(2)
+
+    # Delete user and check valid
+    api._api_user_delete({'user_id':2})
+    assert not api._is_user_deleted(1)
+    assert api._is_user_deleted(2)
+
+def test_are_users_friends(tmp_path):
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B', 'userC':'test_pass101C'})
+
+    # Make 2 users friends
+    api._api_user_addFriend({'user_id':1, 'friend_id':2})
+
+    # Test who is friends
+    assert api._are_users_friends(1, 2)
+    assert api._are_users_friends(2, 1)
+    assert not api._are_users_friends(1, 3)
+    assert not api._are_users_friends(3, 1)
+    assert not api._are_users_friends(0, 1)
+    assert not api._are_users_friends(0, 2)
+    assert not api._are_users_friends(0, 3)
+
+def test_user_canView(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B', 'userC':'test_pass101C'})
+
+    # Make 2 users friends
+    api._api_user_addFriend({'user_id':1, 'friend_id':2})
+
+    # Check valid permissions
+    assert api._user_canView(0, 1)
+    assert api._user_canView(0, 2)
+    assert api._user_canView(0, 3)
+    assert api._user_canView(1, 1)
+    assert api._user_canView(2, 2)
+    assert api._user_canView(3, 3)
+    assert api._user_canView(1, 2)
+    assert api._user_canView(2, 1)
+
+    # Check invalid permissions
+    assert not api._user_canView(None, 1)
+    assert not api._user_canView(None, 2)
+    assert not api._user_canView(None, 3)
+    assert not api._user_canView(1, 3)
+    assert not api._user_canView(3, 1)
+    assert not api._user_canView(1, 0)
+    assert not api._user_canView(2, 0)
+    assert not api._user_canView(3, 0)
+
+def test_user_canEdit(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B', 'userC':'test_pass101C'})
+
+    # Make 2 users friends
+    api._api_user_addFriend({'user_id':1, 'friend_id':2})
+
+    # Check valid permissions
+    assert api._user_canEdit(0, 1)
+    assert api._user_canEdit(0, 2)
+    assert api._user_canEdit(0, 3)
+    assert api._user_canEdit(1, 1)
+    assert api._user_canEdit(2, 2)
+    assert api._user_canEdit(3, 3)
+
+    # Check invalid permissions
+    assert not api._user_canEdit(None, 1)
+    assert not api._user_canEdit(None, 2)
+    assert not api._user_canEdit(None, 3)
+    assert not api._user_canEdit(1, 2)
+    assert not api._user_canEdit(1, 3)
+    assert not api._user_canEdit(2, 1)
+    assert not api._user_canEdit(2, 3)
+    assert not api._user_canEdit(3, 1)
+    assert not api._user_canEdit(1, 3)
+    assert not api._user_canEdit(1, 0)
+    assert not api._user_canEdit(2, 0)
+    assert not api._user_canEdit(3, 0)
+
+def test_gen_password_hash():
+    # Test proper hash/salt lengths
+    hash, salt = restAPI.gen_password_hash('testPassword')
+    assert len(hash) == 32
+    assert len(salt) == 16
+
+    # Test random salt results in different hash/salt for identical password
+    hash2, salt2 = restAPI.gen_password_hash('testPassword')
+    assert hash != hash2
+    assert salt != salt2
+
+def test_check_userAuth(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Test with correct passwords
+    assert api._check_userAuth('userA', 'test_pass101A')
+    assert api._check_userAuth('userB', 'test_pass101B')
+
+    # Test with incorrect passwords
+    assert not api._check_userAuth('userA', 'incorrect_test_pass101A')
+    assert not api._check_userAuth('userB', 'incorrect_test_pass101B')
+
+    # Test with non-existing user
+    assert not api._check_userAuth('not_a_user', 'incorrect_test_pass101B')
+
+    # Test admin
+    assert api._check_userAuth('admin', 'root')
+    assert not api._check_userAuth('admin', 'not_R00T')
+
+def test_checkApiKey(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Check there are no api keys before authentication
+    assert api._restAPI__apiKeys == {}
+
+    # Authenticate users
+    keyAdmin = api._api_user_auth({'username':'admin', 'password':'root'})['apiKey']
+    keyA = api._api_user_auth({'username':'userA', 'password':'test_pass101A'})['apiKey']
+    keyB = api._api_user_auth({'username':'userB', 'password':'test_pass101B'})['apiKey']
+
+    # Check keys
+    assert len(api._restAPI__apiKeys) == 3
+    assert api._checkApiKey(keyAdmin) == 0
+    assert api._checkApiKey(keyA) == 1
+    assert api._checkApiKey(keyB) == 2
+    
 
 def test_user_admin(tmp_path):
     api = setup_api(tmp_path)
