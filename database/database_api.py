@@ -2,6 +2,7 @@ import os
 import sqlite3
 import hashlib
 import base64
+import string
 
 class restAPI:
     """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
@@ -98,10 +99,43 @@ class restAPI:
         
         
     def _check_username(self, username: str):
-        return (5 <= len(username) <= 25) and (username not in ('admin', 'deleted_user', 'unknown_user'))
+        if not 5 <= len(username) <=25:
+            return False
+        
+        if username in ('admin', 'deleted_user', 'unknown_user'):
+            return False
+        
+        if not username.isascii() or not username.isprintable() or ' ' in username:
+            return False
+
+        return True
     
     def _check_password(self, password: str):
-        return (len(password) >= 10) and (password.find('password') == -1)
+        if not 10 <= len(password) <= 50:
+            return False
+        
+        if password in ('password', 'query', '123456789', '123456', 'secret'):
+            return False
+        
+        if not password.isprintable() or not password.isascii():
+            return False
+        
+        if not any(char.isdigit() for char in password):
+            return False
+        
+        if not any(char.isalpha() for char in password):
+            return False
+        
+        if not any(char.isupper() for char in password):
+            return False
+        
+        if not any(char.islower() for char in password):
+            return False
+        
+        if not any(char in password for char in string.punctuation):
+            return False
+        
+        return True
     
     def _is_username_existing(self, username: str):
         self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))

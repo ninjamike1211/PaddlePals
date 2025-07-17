@@ -14,6 +14,12 @@ def test_init(tmp_path):
     assert api._database
     assert api._dbCursor
 
+    # Verify the correct tables are present
+    api._dbCursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = api._dbCursor.fetchall()
+    print(tables)
+    assert tables == [('users',), ('games',), ('user_game_stats',), ('friends',)]
+
     # Check default user admin is the only user
     api._dbCursor.execute("SELECT user_id, username, valid, gamesPlayed, gamesWon, averageScore FROM users")
     users = api._dbCursor.fetchall()
@@ -24,10 +30,69 @@ def test_init(tmp_path):
     game_count = api._dbCursor.fetchone()
     assert game_count == (0,)
 
+    # Check that game stats table is empty
+    api._dbCursor.execute("SELECT COUNT(*) FROM user_game_stats")
+    game_count = api._dbCursor.fetchone()
+    assert game_count == (0,)
+
     # Check that friends table is empty
     api._dbCursor.execute("SELECT COUNT(*) FROM friends")
     friend_count = api._dbCursor.fetchone()
     assert friend_count == (0,)
+
+
+def test_check_username(tmp_path):
+    api = setup_api(tmp_path)
+
+    # Check valid usernames
+    assert api._check_username('ThisIsAValidUsername')
+    assert api._check_username('nc84nvqw04873xnb0nzfg0284')
+    assert api._check_username('five5')
+    assert api._check_username('using_underscores')
+    assert api._check_username('!"#$%&\'()*+,-./:;<=>?@')
+    assert api._check_username('[\]^_`{|}~')
+
+    # Check invalid usernames
+    assert not api._check_username('four')
+    assert not api._check_username('twenty-six-characters-long')
+    assert not api._check_username('admin')
+    assert not api._check_username('deleted_user')
+    assert not api._check_username('unknown_user')
+    assert not api._check_username(' ')
+    assert not api._check_username('space username')
+    assert not api._check_username('non\nprintable')
+    assert not api._check_username('emoji😀')
+    assert not api._check_username('£latin¤supplement')
+    assert not api._check_username('ハハ負け犬')
+
+def test_check_password(tmp_path):
+    api = setup_api(tmp_path)
+
+    # Check valid passwords
+    assert api._check_password('Ju$TeN0ugh')
+    assert api._check_password('@lm0st_BUT_n0t_qu1t3_l0ng_3nough_tO_c@uS3_1ssu3s__')
+    assert api._check_password('9sW$S9YHIFaC7EGk75RtD&gj')
+    assert api._check_password('3A0IO9VfSdLIDYjC!Z%knj@u')
+    assert api._check_password('&t@EuAt%^iW5eAxA9tm&mp@B')
+
+    # Check invalid passwords
+    assert not api._check_password('t0Oshort!')
+    assert not api._check_password('w@y_wAy_way_way_way_way_way_way_way_way_way_T00L0ng')
+    assert not api._check_password('non\nprintable')
+    assert not api._check_password('emoji😀')
+    assert not api._check_password('£latin¤supplement')
+    assert not api._check_password('ハハ負け犬')
+    assert not api._check_password('aGoodP@ssword!bUtnod!g!ts')
+    assert not api._check_password('5729!#%&8~%&@#973@')
+    assert not api._check_password('l0w3rc@se0n1y')
+    assert not api._check_password('UPP3RC@SE_0N1Y')
+    assert not api._check_password('N0punctuiation101')
+    assert not api._check_password('password')
+    assert not api._check_password('query')
+    assert not api._check_password('123456789')
+    assert not api._check_password('123456')
+    assert not api._check_password('secret')
+    assert not api._check_password('secret')
 
 
 def test_user_admin(tmp_path):
@@ -51,7 +116,7 @@ def test_user_admin(tmp_path):
 
 
 def test_user_get(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
@@ -111,7 +176,7 @@ def test_user_get(tmp_path):
 def test_create_user(tmp_path):
     api = setup_api(tmp_path)
 
-    user_id = api._api_user_create({'username':'createUserTest', 'password':'createUserPassword'})
+    user_id = api._api_user_create({'username':'createUserTest', 'password':'create_User_Password0'})
     assert user_id == {'user_id':1}
 
     user = api._api_user_get({'user_id':1})
@@ -120,29 +185,29 @@ def test_create_user(tmp_path):
     user_id = api._api_user_id({'username':'createUserTest'})
     assert user_id == {'createUserTest': 1}
 
-    result = api._api_user_auth({'username':'createUserTest', 'password':'createUserPassword'})
+    result = api._api_user_auth({'username':'createUserTest', 'password':'create_User_Password0'})
     assert result['success'] == True
     assert result['apiKey']
 
 
 def test_create_bad_users(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass101'})
+    api = setup_api(tmp_path, users={'testUser':'test_Pass101'})
 
     with pytest.raises(restAPI.APIError) as apiError:
-        api._api_user_create({'username':'admin', 'password':'testPass101'})
+        api._api_user_create({'username':'admin', 'password':'test_Pass101'})
     assert apiError.value.code == 400
 
     with pytest.raises(restAPI.APIError) as apiError:
-        result = api._api_user_create({'username':'deleted_user', 'password':'testPass101'})
+        result = api._api_user_create({'username':'deleted_user', 'password':'test_Pass101'})
     assert apiError.value.code == 400
 
     with pytest.raises(restAPI.APIError) as apiError:
-        result = api._api_user_create({'username':'testUser', 'password':'differentTestPass'})
+        result = api._api_user_create({'username':'testUser', 'password':'different_Test_Pass0'})
     assert apiError.value.code == 403
 
 
 def test_delete_user(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass101'})
+    api = setup_api(tmp_path, users={'testUser':'test_Pass101'})
 
     result = api._api_user_get({'user_id':1, 'objects':['username']})
     assert result == {1: {'username':'testUser'}}
@@ -175,7 +240,7 @@ def test_delete_user(tmp_path):
 
 
 def test_modify_username(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'testPass101', 'testUser2':'electricBoogaloo'})
+    api = setup_api(tmp_path, users={'testUser':'test_Pass101', 'testUser2':'electric_B00gal00'})
 
     result = api._api_user_get({'user_id':1, 'objects':['username']})
     assert result == {1: {'username':'testUser'}}
@@ -202,7 +267,7 @@ def test_modify_username(tmp_path):
     assert apiError.value.code == 403
 
 def test_post_game(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
 
     game_id = api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
     assert game_id == {'game_id':0}
@@ -228,7 +293,7 @@ def test_post_game(tmp_path):
 
 
 def test_friends(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B', 'userC':'testPass101C'})
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B', 'userC':'test_pass101C'})
 
     friends = api._api_user_friends({'user_id':1})
     assert not friends
@@ -265,7 +330,7 @@ def test_friends(tmp_path):
 
 
 def test_game_stats(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'testPass101A', 'userB':'testPass101B'})
+    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
     
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
     api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})

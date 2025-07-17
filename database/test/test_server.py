@@ -40,36 +40,36 @@ def test_create_user(tmp_path):
         assert response.status_code == 400
 
         # Test invalid usernames
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'test', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'test', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         assert response.status_code == 400
 
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'admin', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'admin', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         assert response.status_code == 400
 
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'deleted_user', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'deleted_user', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         assert response.status_code == 400
 
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'unknown_user', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'unknown_user', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         assert response.status_code == 400
 
         # Create valid user
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         assert response.status_code == 200
 
         # Authenticate user
-        response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'testUser', 'password':'bui9b20asdfh0'})
+        response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'testUser', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         response_dict = convert_response(response)
         assert response_dict['success'] == True
         assert response_dict['apiKey']
 
         # Attempt to create duplicate user
-        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'different_pass'})
+        response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'qUzu0pes^hs0b1EhRmfZdve5'})
         assert response.status_code == 403
 
 def test_friends(tmp_path):
-    with setup_server(tmp_path, users={'userA':'testingPassA', 'userB':'testingPassB', 'userC':'testingPassC'}):
+    with setup_server(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B', 'userC':'test_pass101C'}):
         # log in with userA
-        response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'userA', 'password':'testingPassA'})
+        response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'userA', 'password':'test_pass101A'})
         assert response.status_code == 200
         apiKey = convert_response(response)['apiKey']
 
