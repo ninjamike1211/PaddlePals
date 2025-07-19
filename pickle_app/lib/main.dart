@@ -5,6 +5,7 @@ import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 
 void main() {
@@ -657,6 +658,40 @@ class Game {
   }
 
 }
+
+class ConnectivityCheck {
+  static final ConnectivityCheck _instance = ConnectivityCheck._internal();
+  factory ConnectivityCheck() => _instance;
+  ConnectivityCheck._internal(){
+    _init();
+  }
+
+  final _connectivity = Connectivity();
+  final ValueNotifier<bool> isOnline = ValueNotifier(true);
+
+  void _init() {
+    _connectivity.onConnectivityChanged.listen((result){
+      if(result == ConnectivityResult.none){
+        isOnline.value = false;
+      }
+      else{
+        isOnline.value = true;
+      }
+    });
+    _checkInitStatus();
+  }
+
+  void _checkInitStatus() async {
+    var result = await _connectivity.checkConnectivity();
+    if(result == ConnectivityResult.none){
+      isOnline.value = false;
+    }
+    else{
+      isOnline.value = true;
+    }
+  }
+}
+
 
 class MyTextEntryWidget extends StatefulWidget {
   @override
@@ -1546,6 +1581,7 @@ class LoginPage extends StatefulWidget{
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final internetConnection = ConnectivityCheck();
 
   @override
   Widget build(BuildContext context){
@@ -1557,6 +1593,12 @@ class _LoginPageState extends State<LoginPage> {
         child: Column(
           children: [
             MyTextEntryWidget(),
+            ValueListenableBuilder(
+                valueListenable: internetConnection.isOnline,
+                builder: (context, online, _){
+                  return online ? Text("Online") : Text("Offline");
+                }
+            )
           ],
         ),
       ),
