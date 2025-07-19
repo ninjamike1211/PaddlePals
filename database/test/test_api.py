@@ -14,31 +14,49 @@ def test_init(tmp_path):
     assert api._database
     assert api._dbCursor
 
-    # Verify the correct tables are present
-    api._dbCursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = api._dbCursor.fetchall()
-    print(tables)
-    assert tables == [('users',), ('games',), ('user_game_stats',), ('friends',)]
+    def run_init_tests():
+        # Verify the correct tables are present
+        api._dbCursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = api._dbCursor.fetchall()
+        print(tables)
+        assert tables == [('users',), ('games',), ('user_game_stats',), ('friends',)]
 
-    # Check default user admin is the only user
-    api._dbCursor.execute("SELECT user_id, username, valid, gamesPlayed, gamesWon, averageScore FROM users")
-    users = api._dbCursor.fetchall()
-    assert users == [(0, 'admin', 0, None, None, None)]
+        # Check default user admin is the only user
+        api._dbCursor.execute("SELECT user_id, username, valid, gamesPlayed, gamesWon, averageScore FROM users")
+        users = api._dbCursor.fetchall()
+        assert users == [(0, 'admin', 0, None, None, None)]
 
-    # Check that games table is empty
-    api._dbCursor.execute("SELECT COUNT(*) FROM games")
-    game_count = api._dbCursor.fetchone()
-    assert game_count == (0,)
+        # Check that games table is empty
+        api._dbCursor.execute("SELECT COUNT(*) FROM games")
+        game_count = api._dbCursor.fetchone()
+        assert game_count == (0,)
 
-    # Check that game stats table is empty
-    api._dbCursor.execute("SELECT COUNT(*) FROM user_game_stats")
-    game_count = api._dbCursor.fetchone()
-    assert game_count == (0,)
+        # Check that game stats table is empty
+        api._dbCursor.execute("SELECT COUNT(*) FROM user_game_stats")
+        game_count = api._dbCursor.fetchone()
+        assert game_count == (0,)
 
-    # Check that friends table is empty
-    api._dbCursor.execute("SELECT COUNT(*) FROM friends")
-    friend_count = api._dbCursor.fetchone()
-    assert friend_count == (0,)
+        # Check that friends table is empty
+        api._dbCursor.execute("SELECT COUNT(*) FROM friends")
+        friend_count = api._dbCursor.fetchone()
+        assert friend_count == (0,)
+
+    # Run test on fresh database
+    run_init_tests()
+
+    # Add entries to database to make it "dirty"
+    api._api_user_create({'username':'testUserA', 'password':'t3stP@ssw0rd!'})
+    api._api_user_create({'username':'testUserB', 'password':'t3stP@ssw0rd!'})
+    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':5})
+    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':161, 'swing_hits':101, 'swing_min':9, 'swing_max':19, 'swing_avg':11.767, 'hit_modeX':-0.5, 'hit_modeY':0.0, 'hit_avgX':-0.398, 'hit_avgY':0.042})
+    api._api_user_addFriend({'user_id':1, 'friend_id':2})
+    api.close()
+
+    # Create fresh database/api, set to clear database
+    api = restAPI(tmp_path / 'pickle.db', useAuth=False, clearDB=True)
+
+    # Verify database was actually cleared and initialized
+    run_init_tests()
 
 
 def test_check_username(tmp_path):

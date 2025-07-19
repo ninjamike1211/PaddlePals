@@ -22,7 +22,7 @@ class restAPI:
             super().__init__(self.message)
 
 
-    def __init__(self, dbFile = 'pickle.db', useAuth = True, clearDB = False):
+    def __init__(self, dbFile:str = 'pickle.db', useAuth:bool = True, clearDB:bool = False):
         """Creates a RESTful API instance and loads an attached SQLite database
 
         Args:
@@ -39,7 +39,9 @@ class restAPI:
         self._useAuth = useAuth
         self.__apiKeys = {}
 
-        if clearDB:
+        self._dbCursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        count = self._dbCursor.fetchone()[0]
+        if count == 0:
             self._init_db()
 
         
@@ -111,10 +113,10 @@ class restAPI:
         return True
     
     def _check_password(self, password: str):
-        if not 10 <= len(password) <= 50:
+        if password in ('password', 'query', '123456789', '123456', 'secret'):
             return False
         
-        if password in ('password', 'query', '123456789', '123456', 'secret'):
+        if not 10 <= len(password) <= 50:
             return False
         
         if not password.isprintable() or not password.isascii():
@@ -141,20 +143,20 @@ class restAPI:
         self._dbCursor.execute("SELECT COUNT(*) FROM users WHERE username=?", (username,))
         return self._dbCursor.fetchone()[0] > 0
         
-    def _is_user_account_valid(self, user_id):
+    def _is_user_account_valid(self, user_id: int):
         self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self._dbCursor.fetchone()
         return valid and valid[0]
     
-    def _is_user_id_valid(self, user_id):
+    def _is_user_id_valid(self, user_id: int):
         return user_id == -1 or self._is_user_account_valid(user_id)
     
-    def _is_user_deleted(self, user_id):
+    def _is_user_deleted(self, user_id: int):
         self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
         deleted = self._dbCursor.fetchone()
         return deleted and deleted[0] == 'deleted_user'
     
-    def _are_users_friends(self, userA, userB):
+    def _are_users_friends(self, userA: int, userB: int):
         self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
         is_friend = self._dbCursor.fetchone()
 
@@ -163,7 +165,7 @@ class restAPI:
         else:
             return False
     
-    def _user_canView(self, sender_id, user_id):
+    def _user_canView(self, sender_id: int, user_id: int):
         if not self._useAuth:
             return True
 
@@ -175,15 +177,12 @@ class restAPI:
         
         return self._are_users_friends(sender_id, user_id)
     
-    def _user_canEdit(self, sender_id, user_id):
+    def _user_canEdit(self, sender_id: int, user_id: int):
         if not self._useAuth or sender_id == 0:
             return True
 
         if sender_id is None:
             return False
-        
-        if sender_id == 0:
-            return True
         
         return sender_id == user_id
 
@@ -204,7 +203,7 @@ class restAPI:
         userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return userHash == dbHash
     
-    def _checkApiKey(self, apiKey):
+    def _checkApiKey(self, apiKey:str):
         user_id = self.__apiKeys.get(apiKey)
         return user_id
     
@@ -256,9 +255,11 @@ class restAPI:
 
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+        
+        if ('username') not in params.keys():
+            raise self.APIError(f'No valid user values where found, nothing to set: {params.keys}', 400)
 
         for param, val in params.items():
-
             if param == 'username':
                 if not self._check_username(val):
                     raise self.APIError(f'Invalid username {val}', 400)
@@ -669,7 +670,7 @@ class restAPI:
         raise self.APIError("Why...? We don't serve coffee here, just... idk, go find a cafe or something, maybe there's a pickleball court nearby.", 418)
         
 
-    def updateUserGameStats(self, user_id):
+    def updateUserGameStats(self, user_id: int):
 
         if not self._is_user_account_valid(user_id):
             return False
@@ -695,3 +696,4 @@ class restAPI:
     def close(self):
         self._dbCursor.close()
         self._database.close()
+        self.__apiKeys.clear()
