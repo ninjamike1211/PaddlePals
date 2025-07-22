@@ -1011,7 +1011,6 @@ class _GamePageState extends State<GamePage> {
     final cacheBoxKeys = cacheBox.keys.toList();
 
     for(final key in cacheBoxKeys){
-      //TODO check formatting and then process accordingly for api call
       final gameData = cacheBox.get(key);
       print(gameData);
       api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
@@ -1668,6 +1667,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
+//TODO create user saving option, look at Michael's new code
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
 
@@ -1676,7 +1676,7 @@ class LoginPage extends StatefulWidget{
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final internetConenction = ConnectivityCheck();
+  final internetConnection = ConnectivityCheck();
 
   @override
   Widget build(BuildContext context){
@@ -1689,7 +1689,7 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             MyTextEntryWidget(),
             ValueListenableBuilder(
-                valueListenable: internetConenction.isOnline,
+                valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
                   print("Login Page Connectivity: $online");
                   return online ? Text("") : Text("Offline");

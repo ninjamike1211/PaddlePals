@@ -5,7 +5,7 @@ import json
 import sys
 import time
 
-from database.database_api import restAPI
+from database_api import restAPI
 
 class PickleServer():
     def __init__(self, api:restAPI, port:int):
