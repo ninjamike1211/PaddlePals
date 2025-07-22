@@ -2,9 +2,15 @@ import os
 import sqlite3
 import hashlib
 import base64
+import string
+import time
 
 class restAPI:
     """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
+
+    API_KEY_TIMEOUT = 1 * 60
+    ADMIN_USER = 0
+    UNKNOWN_USER = -1
 
     class APIError(Exception):
         """An error triggered by the restAPI itself, including an HTTP error code"""
@@ -21,7 +27,7 @@ class restAPI:
             super().__init__(self.message)
 
 
-    def __init__(self, dbFile = 'pickle.db', useAuth = True, clearDB = False):
+    def __init__(self, dbFile:str = 'pickle.db', useAuth:bool = True, clearDB:bool = False):
         """Creates a RESTful API instance and loads an attached SQLite database
 
         Args:
@@ -37,8 +43,11 @@ class restAPI:
         self._dbCursor = self._database.cursor()
         self._useAuth = useAuth
         self.__apiKeys = {}
+        self.__renewalKeys = {}
 
-        if clearDB:
+        self._dbCursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        count = self._dbCursor.fetchone()[0]
+        if count == 0:
             self._init_db()
 
         
@@ -63,12 +72,15 @@ class restAPI:
             
             endpoint = uri_parts[1].replace('/', '_')
 
-            if self._useAuth and (endpoint not in ("user_auth", 'coffee')):
+            if self._useAuth and (endpoint not in ("user_create", "user_auth", "user_auth_renew", "coffee")):
+                if not api_key:
+                    raise self.APIError('Authentication required, please obtain an API key through pickle/user/auth', 401)
+
                 sender_id = self._checkApiKey(api_key)
                 params['sender_id'] = sender_id
 
-                if not sender_id:
-                    raise self.APIError('Authentication required, please obtain an API ket through pickle/user/auth', 401)
+                if sender_id == None:
+                    raise self.APIError('API key not recognized, could be out of date or server has restarted. Try requesting another one with pickle/user/auth', 401)
             
             func = getattr(self, "_api_" + endpoint, None)
             if func:
@@ -95,14 +107,90 @@ class restAPI:
         
         
     def _check_username(self, username: str):
-        return (5 <= len(username) <= 25) and (username not in ('admin', 'deleted_user', 'unknown_user'))
+        if not 5 <= len(username) <=25:
+            return False
+        
+        if username in ('admin', 'deleted_user', 'unknown_user'):
+            return False
+        
+        if not username.isascii() or not username.isprintable() or ' ' in username:
+            return False
+
+        return True
     
     def _check_password(self, password: str):
-        return (len(password) >= 10) and (password.find('password') == -1)
+        if password in ('password', 'query', '123456789', '123456', 'secret'):
+            return False
+        
+        if not 10 <= len(password) <= 50:
+            return False
+        
+        if not password.isprintable() or not password.isascii():
+            return False
+        
+        if not any(char.isdigit() for char in password):
+            return False
+        
+        if not any(char.isalpha() for char in password):
+            return False
+        
+        if not any(char.isupper() for char in password):
+            return False
+        
+        if not any(char.islower() for char in password):
+            return False
+        
+        if not any(char in password for char in string.punctuation):
+            return False
+        
+        return True
     
     def _is_username_existing(self, username: str):
-        self._dbCursor.execute("SELECT username FROM users WHERE username=?", (username,))
-        return self._dbCursor.fetchone() is not None
+        self._dbCursor.execute("SELECT COUNT(*) FROM users WHERE username=?", (username,))
+        return self._dbCursor.fetchone()[0] > 0
+        
+    def _is_user_account_valid(self, user_id: int):
+        self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
+        valid = self._dbCursor.fetchone()
+        return valid and valid[0]
+    
+    def _is_user_id_valid(self, user_id: int):
+        return user_id == self.UNKNOWN_USER or self._is_user_account_valid(user_id)
+    
+    def _is_user_deleted(self, user_id: int):
+        self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+        deleted = self._dbCursor.fetchone()
+        return deleted and deleted[0] == 'deleted_user'
+    
+    def _are_users_friends(self, userA: int, userB: int):
+        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
+        is_friend = self._dbCursor.fetchone()
+
+        if is_friend:
+            return True
+        else:
+            return False
+    
+    def _user_canView(self, sender_id: int, user_id: int):
+        if not self._useAuth:
+            return True
+
+        if sender_id is None:
+            return False
+        
+        if sender_id == self.ADMIN_USER or sender_id == user_id:
+            return True
+        
+        return self._are_users_friends(sender_id, user_id)
+    
+    def _user_canEdit(self, sender_id: int, user_id: int):
+        if not self._useAuth or sender_id == self.ADMIN_USER:
+            return True
+
+        if sender_id is None:
+            return False
+        
+        return sender_id == user_id
 
     @staticmethod
     def gen_password_hash(password:str):
@@ -121,55 +209,27 @@ class restAPI:
         userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return userHash == dbHash
     
-    def _checkApiKey(self, apiKey):
-        user_id = self.__apiKeys.get(apiKey)
-        return user_id
-        
-    def _is_user_account_valid(self, user_id):
-        self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
-        valid = self._dbCursor.fetchone()
-        return valid and valid[0]
-    
-    def _is_user_id_valid(self, user_id):
-        return user_id == -1 or self._is_user_account_valid(user_id)
-    
-    def _is_user_deleted(self, user_id):
-        self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
-        deleted = self._dbCursor.fetchone()
-        return deleted and deleted[0] == 'deleted_user'
-    
-    def _are_users_friends(self, userA, userB):
-        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
-        is_friend = self._dbCursor.fetchone()
+    def _gen_ApiKey(self, user_id:int):
+        rand_val = os.urandom(12)
+        api_key = base64.b64encode(rand_val).decode('utf-8')
+        self.__apiKeys[api_key] = {'user_id':user_id, 'expiration':time.time() + self.API_KEY_TIMEOUT}
 
-        if is_friend:
-            return True
+        rand_val = os.urandom(12)
+        renew_key = base64.b64encode(rand_val).decode('utf-8')
+        self.__renewalKeys[renew_key] = user_id
+
+        return api_key, renew_key
+    
+    def _checkApiKey(self, apiKey:str):
+        key_info = self.__apiKeys.get(apiKey)
+
+        if not key_info:
+            return None
+        elif time.time() <  key_info['expiration']:
+            return key_info['user_id']
         else:
-            return False
-    
-    def _user_canView(self, sender_id, user_id):
-        if not self._useAuth:
-            return True
-
-        if not sender_id:
-            return False
-        
-        if sender_id == 0 or sender_id == user_id:
-            return True
-        
-        return self._are_users_friends(sender_id, user_id)
-    
-    def _user_canEdit(self, sender_id, user_id):
-        if not self._useAuth or sender_id == 0:
-            return True
-
-        if not sender_id:
-            return False
-        
-        if sender_id == 0:
-            return True
-        
-        return sender_id == user_id
+            self.__apiKeys.pop(apiKey)
+            raise self.APIError('API key has expired, please renew with the renewal key.', 498)
     
 
     def _api_user_get(self, params: dict):
@@ -219,9 +279,11 @@ class restAPI:
 
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+        
+        if ('username') not in params.keys():
+            raise self.APIError(f'No valid user values where found, nothing to set: {params.keys}', 400)
 
         for param, val in params.items():
-
             if param == 'username':
                 if not self._check_username(val):
                     raise self.APIError(f'Invalid username {val}', 400)
@@ -279,13 +341,15 @@ class restAPI:
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
         self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
+        self._dbCursor.execute("DELETE FROM friends WHERE userA=? OR userB=?", (user_id, user_id))
+        self._dbCursor.execute("DELETE FROM user_game_stats WHERE user_id=?", (user_id,))
         self._database.commit()
         return {'success':True}
             
     
     def _api_user_id(self, params: dict):
         
-        if len(params) != 1 or 'username' not in params:
+        if 'username' not in params:
             raise self.APIError('GET pickle/user/id requires the parameter "username"', 400)
         
         usernames = params['username']
@@ -379,8 +443,8 @@ class restAPI:
         else:
             raise self.APIError('ERROR: POST pickle/user/friends requires either "friend_id" or "friend_username" parameter.', 400)
         
-        if not self._user_canView(params.get('sender_id'), friend_id):
-            raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
+        # if not self._user_canView(params.get('sender_id'), friend_id):
+        #     raise self.APIError(f'Access forbidden to user ID {friend_id}', 403)
         
         self._dbCursor.execute("SELECT COUNT(*) FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (user_id, friend_id, friend_id, user_id))
         existing_count = self._dbCursor.fetchone()[0]
@@ -483,15 +547,30 @@ class restAPI:
             self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
             user_id = self._dbCursor.fetchone()[0]
 
-            rand_val = os.urandom(12)
-            api_key = base64.b64encode(rand_val).decode('utf-8')
-            self.__apiKeys[api_key] = user_id
+            api_key, renew_key = self._gen_ApiKey(user_id)
 
             print(f'Authentication successful for user {username}')
-            return {'success':True, 'apiKey':api_key}
+            return {'apiKey':api_key, 'renewaKey':renew_key}
         
         else:
             raise self.APIError(f'Authentication failed for user {username}', 401)
+        
+
+    def _api_user_auth_renew(self, params: dict):
+        renew_key_user = str(params['renewalKey'])
+        user_id = int(params['user_id'])
+
+        renew_key_user = self.__renewalKeys.get(renew_key_user)
+
+        if user_id == renew_key_user:
+            api_key, renew_key = self._gen_ApiKey(user_id)
+            return {'apiKey':api_key, 'renewaKey':renew_key}
+        
+        elif not renew_key_user:
+            raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
+        
+        else:
+            raise self.APIError(f'Key renewal failed, incorrect renewal key', 401)
     
 
     def _api_game_get(self, params: dict):
@@ -516,33 +595,46 @@ class restAPI:
     
 
     def _api_game_stats(self, params: dict):
-        if 'game_id' not in params:
-            raise self.APIError(f'ERROR: GET pickle/game/stats must specify game_id parameter!', 400)
         
-        game_id = int(params['game_id'])
         user_id = int(params['user_id'])
-
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
-        self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (game_id, user_id))
-        stats = self._dbCursor.fetchone()
+        stats = {}
+        if 'game_id' in params:
+            game_ids = params['game_id']
+            if type(game_ids) is not list:
+                game_ids = [game_ids]
 
-        if not stats:
-            raise self.APIError(f'Game for game_id {game_id} played by user_id {user_id} not found', 404)
+        else:
+            self._dbCursor.execute("SELECT game_id FROM user_game_stats WHERE user_id=?", (user_id,))
+            game_ids = [id[0] for id in self._dbCursor.fetchall()]
 
-        return {
-            "swing_count": stats[2],
-            "swing_hits": stats[3],
-            "hit_percentage": stats[3] / stats[2],
-            "swing_min": stats[4],
-            "swing_max": stats[5],
-            "swing_avg": stats[6],
-            "hit_modeX": stats[7],
-            "hit_modeY": stats[8],
-            "hit_avgX": stats[9],
-            "hit_avgY": stats[10]
-        }
+        for id in game_ids:
+                self._dbCursor.execute("SELECT timestamp FROM games WHERE game_id=?", (id,))
+                timestamp = self._dbCursor.fetchone()
+
+                if timestamp:
+                    self._dbCursor.execute("SELECT * FROM user_game_stats WHERE game_id=? AND user_id=?", (id, user_id))
+                    game_stats = self._dbCursor.fetchone()
+
+                    stats[id] = {
+                        "timestamp":timestamp[0],
+                        "swing_count": game_stats[2],
+                        "swing_hits": game_stats[3],
+                        "hit_percentage": game_stats[3] / game_stats[2],
+                        "swing_min": game_stats[4],
+                        "swing_max": game_stats[5],
+                        "swing_avg": game_stats[6],
+                        "hit_modeX": game_stats[7],
+                        "hit_modeY": game_stats[8],
+                        "hit_avgX": game_stats[9],
+                        "hit_avgY": game_stats[10]
+                    }
+                else:
+                    stats[id] = None
+
+        return stats
 
 
     def _api_game_register(self, params: dict):
@@ -617,7 +709,7 @@ class restAPI:
         raise self.APIError("Why...? We don't serve coffee here, just... idk, go find a cafe or something, maybe there's a pickleball court nearby.", 418)
         
 
-    def updateUserGameStats(self, user_id):
+    def updateUserGameStats(self, user_id: int):
 
         if not self._is_user_account_valid(user_id):
             return False
@@ -643,3 +735,5 @@ class restAPI:
     def close(self):
         self._dbCursor.close()
         self._database.close()
+        self.__apiKeys.clear()
+        self.__renewalKeys.clear()

@@ -137,7 +137,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/user/auth`
     ---
-    Authenticates using a username and password, returns an API token for accessing user account data.
+    Authenticates using a username and password, returns an API token for accessing user account data and a renewal key for generating a new API token.
 
     **params**:
     - `username`: account username
@@ -145,7 +145,20 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**:
     ```js
-    {"success":(true/false), "apiKey":(api_key)}
+    {"apiKey":(api_key), "renewalKey":(renewalKey)}
+    ```
+
+- `pickle/user/auth/renew`
+    ---
+    Renews an API key with a new one based on an existing renewal key. Takes in the user ID and existing renewal key, and returns a new API key and new renewal key.
+
+    **params**:
+    - `user_id`: the user ID of the token to renew
+    - `renewalKey`: renewal key
+
+    **returns**:
+    ```js
+    {"apiKey":{api_key}, "renewalKey":(renewalKey)}
     ```
 
 ## pickle/game
@@ -166,25 +179,31 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/game/stats`
     ---
-    Returns the game statistics of a user associated with a specific game ID.
+    Returns the game statistics of a user associated with a specific game ID. Returns `None` for any games which don't have registered game stats
 
     **params**:
-    - `game_id`: the game ID of the game to request
     - `user_id`: the user ID to request the stats of
+    - `game_id` *(optional)*: the game ID(s) of the game(s) to request as an int or list of ints
 
     **returns**:
     ```js
     {
-        "swing_count":(swing_count),
-        "swing_hits":(swing_hit),
-        "hit_percentage":(hit_percentage),
-        "swing_min":(swing_min),
-        "swing_max":(swing_max),
-        "swing_avg":(swing_avg),
-        "hit_modeX":(hit_modeX),
-        "hit_modeY":(hit_modeY),
-        "hit_avgX":(hit_avgX),
-        "hit_avgY":(hit_avgY)
+        "(game_id)": {
+            "timestamp":(timestamp),
+            "swing_count":(swing_count),
+            "swing_hits":(swing_hit),
+            "hit_percentage":(hit_percentage),
+            "swing_min":(swing_min),
+            "swing_max":(swing_max),
+            "swing_avg":(swing_avg),
+            "hit_modeX":(hit_modeX),
+            "hit_modeY":(hit_modeY),
+            "hit_avgX":(hit_avgX),
+            "hit_avgY":(hit_avgY)
+        },
+        ...
+        "(game_id)":null,
+        ...
     }
     ```
 

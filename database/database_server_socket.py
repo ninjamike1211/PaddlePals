@@ -73,7 +73,7 @@ class PickleServer:
 
 if __name__ == "__main__":
     pickleAPI = restAPI('database/pickle.db', False, False)
-    server = PickleServer(pickleAPI, 80)
+    server = PickleServer(pickleAPI, 8080)
     server.start_server()
 
     try:
