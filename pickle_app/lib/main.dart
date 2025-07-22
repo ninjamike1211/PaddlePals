@@ -1640,6 +1640,7 @@ class ProfilePage extends StatefulWidget{
 
 class _ProfilePageState extends State<ProfilePage> {
   bool isConnected = false;
+  final internetConnection = ConnectivityCheck();
 
   void scan(){
     myBLE.startScan(onDeviceDiscovered: (device) {
@@ -1675,7 +1676,13 @@ class _ProfilePageState extends State<ProfilePage> {
       body: Center(
         child: Column(
           children: [
-            SizedBox(height: 16),
+            ValueListenableBuilder(
+              valueListenable: internetConnection.isOnline,
+              builder: (context, online, _){
+                print("Game Page Connectivity: $online");
+                return online ? Text("") : Text("Offline");
+              }
+            ),
             Container(
               width: 100,
               height: 100,
