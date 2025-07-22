@@ -86,7 +86,7 @@ class PickleServer():
                 self.send_error(400, f'Type Error: {error}')
 
             except Exception as error:
-                self.send_error(500, f'Error: {error}')
+                self.send_error(500, f'Server Error: {error}')
 
 
 if __name__ == "__main__":

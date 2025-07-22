@@ -67,13 +67,13 @@ class restAPI:
             endpoint = uri_parts[1].replace('/', '_')
 
             if self._useAuth and (endpoint not in ("user_create", "user_auth", 'coffee')):
-                sender_id = self._checkApiKey(api_key)
-                params['sender_id'] = sender_id
-
                 if not api_key:
                     raise self.APIError('Authentication required, please obtain an API key through pickle/user/auth', 401)
 
-                if not sender_id:
+                sender_id = self._checkApiKey(api_key)
+                params['sender_id'] = sender_id
+
+                if sender_id == None:
                     raise self.APIError('API key not recognized, could be out of date or server has restarted. Try requesting another one with pickle/user/auth', 401)
             
             func = getattr(self, "_api_" + endpoint, None)

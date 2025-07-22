@@ -282,7 +282,7 @@ def test_checkApiKey(tmp_path):
     assert api._checkApiKey(keyB) == 2
     
 
-def test_user_admin(tmp_path):
+def test_user_get_admin(tmp_path):
     api = setup_api(tmp_path)
     
     with pytest.raises(restAPI.APIError) as apiError:
