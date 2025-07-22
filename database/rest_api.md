@@ -137,7 +137,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/user/auth`
     ---
-    Authenticates using a username and password, returns an API token for accessing user account data.
+    Authenticates using a username and password, returns an API token for accessing user account data and a renewal key for generating a new API token.
 
     **params**:
     - `username`: account username
@@ -145,7 +145,20 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**:
     ```js
-    {"success":(true/false), "apiKey":(api_key)}
+    {"apiKey":(api_key), "renewalKey":(renewalKey)}
+    ```
+
+- `pickle/user/auth/renew`
+    ---
+    Renews an API key with a new one based on an existing renewal key. Takes in the user ID and existing renewal key, and returns a new API key and new renewal key.
+
+    **params**:
+    - `user_id`: the user ID of the token to renew
+    - `renewalKey`: renewal key
+
+    **returns**:
+    ```js
+    {"apiKey":{api_key}, "renewalKey":(renewalKey)}
     ```
 
 ## pickle/game

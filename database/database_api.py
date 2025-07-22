@@ -3,9 +3,14 @@ import sqlite3
 import hashlib
 import base64
 import string
+import time
 
 class restAPI:
     """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
+
+    API_KEY_TIMEOUT = 1 * 60
+    ADMIN_USER = 0
+    UNKNOWN_USER = -1
 
     class APIError(Exception):
         """An error triggered by the restAPI itself, including an HTTP error code"""
@@ -38,6 +43,7 @@ class restAPI:
         self._dbCursor = self._database.cursor()
         self._useAuth = useAuth
         self.__apiKeys = {}
+        self.__renewalKeys = {}
 
         self._dbCursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
         count = self._dbCursor.fetchone()[0]
@@ -66,7 +72,7 @@ class restAPI:
             
             endpoint = uri_parts[1].replace('/', '_')
 
-            if self._useAuth and (endpoint not in ("user_create", "user_auth", 'coffee')):
+            if self._useAuth and (endpoint not in ("user_create", "user_auth", "user_auth_renew", "coffee")):
                 if not api_key:
                     raise self.APIError('Authentication required, please obtain an API key through pickle/user/auth', 401)
 
@@ -149,7 +155,7 @@ class restAPI:
         return valid and valid[0]
     
     def _is_user_id_valid(self, user_id: int):
-        return user_id == -1 or self._is_user_account_valid(user_id)
+        return user_id == self.UNKNOWN_USER or self._is_user_account_valid(user_id)
     
     def _is_user_deleted(self, user_id: int):
         self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
@@ -172,13 +178,13 @@ class restAPI:
         if sender_id is None:
             return False
         
-        if sender_id == 0 or sender_id == user_id:
+        if sender_id == self.ADMIN_USER or sender_id == user_id:
             return True
         
         return self._are_users_friends(sender_id, user_id)
     
     def _user_canEdit(self, sender_id: int, user_id: int):
-        if not self._useAuth or sender_id == 0:
+        if not self._useAuth or sender_id == self.ADMIN_USER:
             return True
 
         if sender_id is None:
@@ -203,9 +209,27 @@ class restAPI:
         userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return userHash == dbHash
     
+    def _gen_ApiKey(self, user_id:int):
+        rand_val = os.urandom(12)
+        api_key = base64.b64encode(rand_val).decode('utf-8')
+        self.__apiKeys[api_key] = {'user_id':user_id, 'expiration':time.time() + self.API_KEY_TIMEOUT}
+
+        rand_val = os.urandom(12)
+        renew_key = base64.b64encode(rand_val).decode('utf-8')
+        self.__renewalKeys[renew_key] = user_id
+
+        return api_key, renew_key
+    
     def _checkApiKey(self, apiKey:str):
-        user_id = self.__apiKeys.get(apiKey)
-        return user_id
+        key_info = self.__apiKeys.get(apiKey)
+
+        if not key_info:
+            return None
+        elif time.time() <  key_info['expiration']:
+            return key_info['user_id']
+        else:
+            self.__apiKeys.pop(apiKey)
+            raise self.APIError('API key has expired, please renew with the renewal key.', 498)
     
 
     def _api_user_get(self, params: dict):
@@ -523,15 +547,30 @@ class restAPI:
             self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
             user_id = self._dbCursor.fetchone()[0]
 
-            rand_val = os.urandom(12)
-            api_key = base64.b64encode(rand_val).decode('utf-8')
-            self.__apiKeys[api_key] = user_id
+            api_key, renew_key = self._gen_ApiKey(user_id)
 
             print(f'Authentication successful for user {username}')
-            return {'success':True, 'apiKey':api_key}
+            return {'apiKey':api_key, 'renewaKey':renew_key}
         
         else:
             raise self.APIError(f'Authentication failed for user {username}', 401)
+        
+
+    def _api_user_auth_renew(self, params: dict):
+        renew_key_user = str(params['renewalKey'])
+        user_id = int(params['user_id'])
+
+        renew_key_user = self.__renewalKeys.get(renew_key_user)
+
+        if user_id == renew_key_user:
+            api_key, renew_key = self._gen_ApiKey(user_id)
+            return {'apiKey':api_key, 'renewaKey':renew_key}
+        
+        elif not renew_key_user:
+            raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
+        
+        else:
+            raise self.APIError(f'Key renewal failed, incorrect renewal key', 401)
     
 
     def _api_game_get(self, params: dict):
@@ -697,3 +736,4 @@ class restAPI:
         self._dbCursor.close()
         self._database.close()
         self.__apiKeys.clear()
+        self.__renewalKeys.clear()
