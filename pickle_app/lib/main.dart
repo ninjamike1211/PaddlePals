@@ -6,9 +6,15 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 
-void main() {
+void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox('cacheBox'); // Open a box for caching
+
   runApp(ChangeNotifierProvider(
     create: (context) => User(username: "", gamesPlayed: 0, gamesWon: 0, avgScore: 0),
     child: MyApp(),));
@@ -690,6 +696,22 @@ class ConnectivityCheck {
       print('isOnline after update: ${isOnline.value}');
     });
   }
+
+  //listen for a restored connection, then send previously cached data to database
+  void connectionRestoreListener(VoidCallback sendCachedData){
+    //check previous connection state
+    bool wasOffline = !isOnline.value;
+
+    isOnline.addListener(() {
+      //connection was restored
+      if (isOnline.value && wasOffline){
+        sendCachedData();
+      }
+      //reset value
+      wasOffline = !isOnline.value;
+    });
+
+  }
 }
 
 
@@ -919,13 +941,21 @@ class _GamePageState extends State<GamePage> {
     print("game started");
   }
 
-  void showWinner(winnerName){
+  String showWinnerContent(String winnerName) {
+    if(internetConnection.isOnline.value == true){
+      return "$winnerName is the winner!";
+    }
+    else{
+      return "$winnerName is the winner!\nData will be saved locally until connection is restored";
+    }
+  }
+  void showWinner(String winnerName){
     showDialog(
         context: context,
         builder: (BuildContext context){
           return AlertDialog(
             title: Text("Game Over"),
-            content: Text("$winnerName is the winner!"),
+            content: Text(showWinnerContent(winnerName)),
             actions: [
               TextButton(
                   onPressed: saveAndRestartGame,
@@ -961,6 +991,33 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async {
+    Map<String, dynamic> gameToSave = {
+      'timestamp': startTime,
+      'game_type': gameTypeNum,
+      'winner_name': winnerName, //NEED TO BE CONVERTED TO ID BEFORE SENDING TO DATABASE
+      'loser_name': loserName,
+      'winner_points': winnerPoints,
+      'loser_points': loserPoints
+    };
+
+    final cacheBox = await Hive.openBox("gameQueue");
+    await cacheBox.add(gameToSave);
+
+  }
+
+  void sendCachedGames() async {
+    final cacheBox = await Hive.openBox("gameQueue");
+    final cacheBoxKeys = cacheBox.keys.toList();
+
+    for(final key in cacheBoxKeys){
+      //TODO check formatting and then process accordingly for api call
+      final gameData = cacheBox.get(key);
+      print(gameData);
+      api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
+    }
+  }
+
   void saveAndRestartGame(){
     int gameTypeNum = game.gameTypeToInt();
 
@@ -991,7 +1048,15 @@ class _GamePageState extends State<GamePage> {
       loserPoints = game.myScore;
     }
 
-    api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+    if(internetConnection.isOnline.value == true){
+      api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      print("Online. Sending game to database");
+    }
+    else{
+      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      print("Offline. Caching game data");
+    }
+
 
     context.read<User>().setOpponent("");
 
@@ -1006,6 +1071,12 @@ class _GamePageState extends State<GamePage> {
   void initState() {
     super.initState();
     loadOpponent();
+
+    internetConnection.connectionRestoreListener((){
+      print("Internet connection restored. Sending cached games");
+      sendCachedGames();
+    });
+
     if(myBLE.connectedDevice != null){
       DiscoveredDevice device = myBLE.connectedDevice!;
 
