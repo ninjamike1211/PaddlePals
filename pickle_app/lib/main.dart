@@ -669,26 +669,26 @@ class ConnectivityCheck {
   final _connectivity = Connectivity();
   final ValueNotifier<bool> isOnline = ValueNotifier(true);
 
-  void _init() {
+  void _init() async{
+    await _checkInitStatus();
+
     _connectivity.onConnectivityChanged.listen((result){
-      if(result == ConnectivityResult.none){
-        isOnline.value = false;
-      }
-      else{
-        isOnline.value = true;
-      }
+      final online = !result.contains(ConnectivityResult.none);
+      isOnline.value = online;
     });
-    _checkInitStatus();
+
   }
 
-  void _checkInitStatus() async {
-    var result = await _connectivity.checkConnectivity();
-    if(result == ConnectivityResult.none){
-      isOnline.value = false;
-    }
-    else{
-      isOnline.value = true;
-    }
+  Future<void> _checkInitStatus() async {
+    final result = await _connectivity.checkConnectivity();
+    final online = !result.contains(ConnectivityResult.none);
+    isOnline.value = online;
+    print('Initial connectivity: $result');
+
+    // Delay the print to ensure ValueNotifier has processed the change
+    Future.microtask(() {
+      print('isOnline after update: ${isOnline.value}');
+    });
   }
 }
 
@@ -880,6 +880,7 @@ class _GamePageState extends State<GamePage> {
   bool isLoading = true;
   final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
   final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
+  final internetConnection = ConnectivityCheck();
 
 
   void loadOpponent(){
@@ -1038,6 +1039,13 @@ class _GamePageState extends State<GamePage> {
       body:
       Column(
         children: [
+          ValueListenableBuilder(
+              valueListenable: internetConnection.isOnline,
+              builder: (context, online, _){
+                print("Game Page Connectivity: $online");
+                return online ? Text("") : Text("Offline");
+              }
+          ),
           Row(
             children: [
               SizedBox(width: 80,),
@@ -1581,7 +1589,7 @@ class LoginPage extends StatefulWidget{
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final internetConnection = ConnectivityCheck();
+  final internetConenction = ConnectivityCheck();
 
   @override
   Widget build(BuildContext context){
@@ -1594,11 +1602,12 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             MyTextEntryWidget(),
             ValueListenableBuilder(
-                valueListenable: internetConnection.isOnline,
+                valueListenable: internetConenction.isOnline,
                 builder: (context, online, _){
-                  return online ? Text("Online") : Text("Offline");
+                  print("Login Page Connectivity: $online");
+                  return online ? Text("") : Text("Offline");
                 }
-            )
+            ),
           ],
         ),
       ),
