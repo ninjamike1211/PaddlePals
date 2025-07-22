@@ -1137,6 +1137,7 @@ class _SocialPageState extends State<SocialPage> {
 
   final TextEditingController _controller = TextEditingController();
   bool isLoading = true;
+  final internetConnection = ConnectivityCheck();
 
   @override
   void initState() {
@@ -1231,6 +1232,13 @@ class _SocialPageState extends State<SocialPage> {
         child:
         Column(
           children: [
+            ValueListenableBuilder(
+                valueListenable: internetConnection.isOnline,
+                builder: (context, online, _){
+                  print("Game Page Connectivity: $online");
+                  return online ? Text("") : Text("Offline");
+                }
+            ),
             SizedBox(height: 16),
             SizedBox(
               width: 300,
@@ -1282,6 +1290,7 @@ class _HistoryPageState extends State<HistoryPage> {
   List<int>? gameIds;
   List<int>? winIds;
   List<int>? lossIds;
+  final internetConnection = ConnectivityCheck();
 
   @override
   void initState() {
@@ -1532,6 +1541,13 @@ class _HistoryPageState extends State<HistoryPage> {
       body: Center(
         child: Column(
           children: [
+            ValueListenableBuilder(
+                valueListenable: internetConnection.isOnline,
+                builder: (context, online, _){
+                  print("Game Page Connectivity: $online");
+                  return online ? Text("") : Text("Offline");
+                }
+            ),
             DropdownButton<String>(
                 hint: Text("Select a stat to view"),
                 value: selectedStat,
