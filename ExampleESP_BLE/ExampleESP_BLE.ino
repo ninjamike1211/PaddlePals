@@ -15,6 +15,10 @@
 // https://math.libretexts.org/Bookshelves/Precalculus/Book%3A_Trigonometry_(Sundstrom_and_Schlicker)/01%3A_The_Trigonometric_Functions/1.04%3A_Velocity_and_Angular_Velocity
 // Magnitude of Angular Velocity:
 
+// Credit to Instructables and Arduino project hub for help with Seven-Segment:
+// https://www.instructables.com/7-Segment-Display-On-Arduino/
+// https://projecthub.arduino.cc/aboda243/get-started-with-seven-segment-5754a8
+
 // NOTE - NEED TO ADD INTERRUPT() FOR SWING SPEED!
 
 // Libraries for BLE communication
@@ -35,6 +39,29 @@
 // Button pins
 #define button_increment_pin 18
 #define button_decrement_pin 17
+
+// Seven-segment pins
+
+#define seg_1_a 1
+#define seg_1_b 1
+#define seg_1_c 1
+#define seg_1_d 1
+#define seg_1_e 1
+#define seg_1_f 1
+#define seg_1_g 1
+
+#define seg_2_a 1
+#define seg_2_b 1
+#define seg_2_c 1
+#define seg_2_d 1
+#define seg_2_e 1
+#define seg_2_f 1
+#define seg_2_g 1
+
+#define fsr_1_pin 1
+#define fsr_2_pin 1
+#define fsr_3_pin 1
+#define fsr_4_pin 1
 
 // Create Button2 buttons
 Button2 buttonIncrement;
@@ -358,7 +385,7 @@ void loop() {
   // E.g. if it gives the past number of points, return the new total
   // Or if it gives the number of games played and the total points, calculate the average PPG
 
-  if (!deviceConnected) {
+  if (deviceConnected) {
     // Get the current millis
     unsigned long currentMillis = millis();
 
@@ -387,6 +414,17 @@ void loop() {
       float cleanY = (abs(wy) > 0.1) ? wy : 0.0;
       float cleanZ = (abs(wz) > 0.1) ? wz : 0.0;
       float newSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, USE_DIRECTIONAL_BIAS);
+
+      // Use following for graphing purposes
+      // Print the current time, the current swing speed, and if the swing is active
+      // Will be used with a python script to graph swing speed along with threshold
+
+      //unsigned long currentMillis = millis();
+      //Serial.print(currentMillis);
+      //Serial.print(",");
+      //Serial.print(newSpeed);   // Current swing speed (m/s)
+      //Serial.print(",");
+      //Serial.println(swingActive ? "1" : "0");  // Optional: indicate active swing
 
       // Calculate magnitude of total acceleration - we wsill use this along with the swingThreshold to record a swing
       float accelMagnitude = sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2));
