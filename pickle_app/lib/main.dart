@@ -25,7 +25,7 @@ void main() async{
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.29.135:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -202,7 +202,7 @@ class APIRequests {
     }
   }
 
-  Future<bool> authorizeLogin(String un, String pw) async {
+  Future<String> authorizeLogin(String un, String pw) async {
     print("Username: $un");
     print("Password: $pw");
 
@@ -231,10 +231,10 @@ class APIRequests {
     if (response.statusCode == 200 || response.statusCode == 201) {
       if (response.body.isNotEmpty) {
         final Map<String, dynamic> responseData = json.decode(response.body);
-        return responseData['success'] == true;
+        return responseData['apiKey'];
       }
     }
-    return false;
+    return "";
   }
 
   Future<Map<String, dynamic>> registerGame(int timestamp, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async{
@@ -455,13 +455,15 @@ class User extends ChangeNotifier {
 
   Future<void> updateUserfromDatabase(String newUserName) async{
 
+    newUserName = newUserName.trim();
     print("in updateUserfromDatabase");
     Map<String, dynamic> user_id = await api.getUserID(newUserName);
 
     final int id_num = user_id[newUserName];
+    final String id_string = id_num.toString();
 
     Map<String, dynamic> newUserMap = await api.getUserRequest(id_num);
-    Map<String, dynamic> userMap = newUserMap['2'];
+    Map<String, dynamic> userMap = newUserMap[id_string];
 
     Map<String, dynamic> friendMap = await api.getFriends(newUserName);
 
@@ -485,6 +487,14 @@ class User extends ChangeNotifier {
     notifyListeners();
   }
 
+  void resetUser(){
+    username = "";
+    gamesPlayed = 0;
+    gamesWon = 0;
+    avgScore = 0;
+    pals = [];
+    opponent = "";
+  }
 }
 
 class BleFunctionality{
@@ -738,9 +748,11 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
   }
 
   _login(String userName, String password) async {
-    bool validLogin = await api.authorizeLogin(userName, password);
+    String apiKey = await api.authorizeLogin(userName, password);
 
-    if(validLogin){
+    print("LOGIN UN: $userName");
+
+    if(apiKey != ""){
       Provider.of<User>(context, listen: false).updateUserfromDatabase(userName);
       Navigator.pushReplacementNamed(context, '/home');
     }
@@ -1668,6 +1680,7 @@ class _HistoryPageState extends State<HistoryPage> {
 }
 
 //TODO create user saving option, look at Michael's new code
+//TODO create checkbox for saving user
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
 
@@ -1677,6 +1690,7 @@ class LoginPage extends StatefulWidget{
 
 class _LoginPageState extends State<LoginPage> {
   final internetConnection = ConnectivityCheck();
+  bool saveChecked = false;
 
   @override
   Widget build(BuildContext context){
@@ -1695,12 +1709,29 @@ class _LoginPageState extends State<LoginPage> {
                   return online ? Text("") : Text("Offline");
                 }
             ),
+            SizedBox(height: 32,),
+            Row(
+              children: [
+                SizedBox(width: 20,),
+                Text("Would you like to save this user?"),
+                Checkbox(
+                    value: saveChecked,
+                    onChanged: (bool ? newValue) {
+                      setState(() {
+                        saveChecked = newValue!;
+                      });
+                    }
+                )
+              ],
+            ),
+
           ],
         ),
       ),
     );
   }
 }
+
 
 class ProfilePage extends StatefulWidget{
   const ProfilePage({super.key});
@@ -1728,6 +1759,11 @@ class _ProfilePageState extends State<ProfilePage> {
       print("Connection status updated: $status");
     });
 
+  }
+
+  //TODO Logout
+  void logout(){
+    Provider.of<User>(context, listen: false).resetUser();
   }
 
   void initState() {
@@ -1766,6 +1802,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 "Hello, ${user.username}"
             ),
             SizedBox(height: 16,),
+            ElevatedButton(
+                onPressed: () {
+                  logout();
+                  Navigator.pushReplacementNamed(context, '/');
+                },
+                child: Text("Logout")
+            ),
             Expanded(
               child: ListView.builder(
                   itemCount: devices.length,
