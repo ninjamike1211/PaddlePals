@@ -549,7 +549,7 @@ class restAPI:
             api_key, renew_key = self._gen_ApiKey(user_id)
 
             print(f'Authentication successful for user {username}')
-            return {'apiKey':api_key, 'renewaKey':renew_key}
+            return {'apiKey':api_key, 'renewalKey':renew_key}
         
         else:
             raise self.APIError(f'Authentication failed for user {username}', 401)
@@ -565,7 +565,7 @@ class restAPI:
         if old_key_user and old_key_user['user_id'] == renew_key_user:
             self.__apiKeys.pop(old_key)
             api_key, renew_key = self._gen_ApiKey(renew_key_user)
-            return {'apiKey':api_key, 'renewaKey':renew_key}
+            return {'apiKey':api_key, 'renewalKey':renew_key}
         
         elif not old_key_user:
             raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
