@@ -153,8 +153,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Renews an API key with a new one based on an existing renewal key. Takes in the user ID and existing renewal key, and returns a new API key and new renewal key.
 
     **params**:
-    - `user_id`: the user ID of the token to renew
-    - `renewalKey`: renewal key
+    - `apiKey`: The old API key to renew
+    - `renewalKey`: The renewal key from the previous authentication
 
     **returns**:
     ```js

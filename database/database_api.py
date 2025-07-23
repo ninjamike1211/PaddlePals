@@ -228,7 +228,6 @@ class restAPI:
         elif time.time() <  key_info['expiration']:
             return key_info['user_id']
         else:
-            self.__apiKeys.pop(apiKey)
             raise self.APIError('API key has expired, please renew with the renewal key.', 498)
     
 
@@ -557,20 +556,23 @@ class restAPI:
         
 
     def _api_user_auth_renew(self, params: dict):
+        old_key = str(params['apiKey'])
         renew_key_user = str(params['renewalKey'])
-        user_id = int(params['user_id'])
 
+        old_key_user = self.__apiKeys.get(old_key)
         renew_key_user = self.__renewalKeys.get(renew_key_user)
 
-        if user_id == renew_key_user:
-            api_key, renew_key = self._gen_ApiKey(user_id)
+        if old_key_user and old_key_user['user_id'] == renew_key_user:
+            self.__apiKeys.pop(old_key)
+            api_key, renew_key = self._gen_ApiKey(renew_key_user)
             return {'apiKey':api_key, 'renewaKey':renew_key}
         
+        elif not old_key_user:
+            raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
         elif not renew_key_user:
             raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
-        
         else:
-            raise self.APIError(f'Key renewal failed, incorrect renewal key', 401)
+            raise self.APIError(f'Key renewal failed, old api key and renewal key do not match', 401)
     
 
     def _api_game_get(self, params: dict):
