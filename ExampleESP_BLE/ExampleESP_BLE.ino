@@ -355,9 +355,6 @@ void setup() {
   buttonDecrement.begin(button_decrement_pin);
   buttonDecrement.setClickHandler(clickHandler);
 
-  // Set default value for score char
-  scoreChar.setValue("0");
-
   // Create the BLE Device
   BLEDevice::init(bleServerName);
 
@@ -402,6 +399,17 @@ void loop() {
     // Poll for button presses
     buttonIncrement.loop();
     buttonDecrement.loop();
+
+    // Try sending initial score
+    // Track whether we've already sent the initial score
+    static bool sentInitialScore = false;
+
+    if (deviceConnected && !sentInitialScore) {
+      scoreChar.setValue("0");
+      scoreChar.notify();
+      Serial.println("Initial score sent to connected device.");
+      sentInitialScore = true;
+    }
 
     // Use a 10ms loop to check for swings
     if (millis() - lastPollTime >= 10) {
