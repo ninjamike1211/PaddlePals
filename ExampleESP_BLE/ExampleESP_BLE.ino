@@ -19,6 +19,9 @@
 // https://www.instructables.com/7-Segment-Display-On-Arduino/
 // https://projecthub.arduino.cc/aboda243/get-started-with-seven-segment-5754a8
 
+// Credit to TechKnowLab for help with the FSR:
+// https://techknowlab.com/thin-film-pressureor-force-sensor-with-arduino/
+
 // NOTE - NEED TO ADD INTERRUPT() FOR SWING SPEED!
 
 // Libraries for BLE communication
@@ -262,16 +265,17 @@ void initAccelerometer() {
 }
 
 void initBLECharacteristics(BLEService* service) {
-  // Setup score descriptor
-  scoreDesc = new BLEDescriptor((uint16_t)0x2901);
-  scoreDesc->setValue("Current Score of Player");
 
-  // Add score descriptor and notification/indication descriptor for communication to characteristics
-  scoreChar.addDescriptor(scoreDesc);
-  scoreChar.addDescriptor(new BLE2902());
+  // Setup Current Temperature descriptor
+  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
+  currentTempDesc->setValue("Current Temperature");
+
+  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
+  currentTempChar.addDescriptor(currentTempDesc);
+  currentTempChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&scoreChar);
+  service->addCharacteristic(&currentTempChar);
 
   // Setup Max Swing Speed descriptor
   maxSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
@@ -295,16 +299,16 @@ void initBLECharacteristics(BLEService* service) {
   // Add characteristic to service
   service->addCharacteristic(&newSwingSpeedChar);
 
-  // Setup Current Temperature descriptor
-  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
-  currentTempDesc->setValue("Current Temperature");
+    // Setup score descriptor
+  scoreDesc = new BLEDescriptor((uint16_t)0x2901);
+  scoreDesc->setValue("Current Score of Player");
 
-  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
-  currentTempChar.addDescriptor(currentTempDesc);
-  currentTempChar.addDescriptor(new BLE2902());
+  // Add score descriptor and notification/indication descriptor for communication to characteristics
+  scoreChar.addDescriptor(scoreDesc);
+  scoreChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&currentTempChar);
+  service->addCharacteristic(&scoreChar);
 }
 
 // Function to get the "true" time accounting for overflows
@@ -350,6 +354,9 @@ void setup() {
 
   buttonDecrement.begin(button_decrement_pin);
   buttonDecrement.setClickHandler(clickHandler);
+
+  // Set default value for score char
+  scoreChar.setValue("0");
 
   // Create the BLE Device
   BLEDevice::init(bleServerName);
@@ -595,4 +602,19 @@ float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, boo
   float finalSwingSpeed = angVelocity * r;
 
   return finalSwingSpeed;
+}
+
+float calculateForce(float sensorValue) {
+  // Get the voltage from the analog value
+  float voltage = sensorValue * (3.3 / 1023.0);
+
+  float resistance;
+
+  // Use the voltage divider equation to calculate resistance
+  // Vout = Vcc * (R_s / (R_s + R_f))
+
+  // Using 10k resistor - solve for R_f
+  resistance = ((3.3 - voltage) * 10000)/voltage;
+
+
 }
