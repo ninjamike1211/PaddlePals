@@ -562,6 +562,11 @@ void clickHandler(Button2& btn) {
     static char scoreArray[50];
     pointsString = String(pointsThisGame);
     pointsString.toCharArray(scoreArray, 50);
+
+    if (scoreChar == nullptr) {
+      Serial.println("ERROR: scoreChar is NULL");
+    }
+
     scoreChar.setValue(scoreArray);
     scoreChar.notify();
   }
@@ -574,6 +579,12 @@ void clickHandler(Button2& btn) {
       static char scoreArray[50];
       pointsString = String(pointsThisGame);
       pointsString.toCharArray(scoreArray, 50);
+
+      
+      if (scoreChar == nullptr) {
+        Serial.println("ERROR: scoreChar is NULL");
+      }
+
       scoreChar.setValue(scoreArray);
       scoreChar.notify();
     }
