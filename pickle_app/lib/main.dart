@@ -25,7 +25,7 @@ void main() async{
 CLASS FOR ALL API REQUESTS
  */
 class APIRequests {
-  final String url = "http://10.6.29.135:80";
+  final String url = "http://10.0.0.188:80";
 
   //GET REQUEST
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -574,23 +574,18 @@ class BleFunctionality{
     required Function(String) onError,
   }){
 
-
+    print("in readLiveFromDevice");
     final characteristic = QualifiedCharacteristic(
         characteristicId: characteristicUuid,
         serviceId: serviceUuid,
         deviceId: connectedDevice.id);
 
-    final response = flutterReactiveBle.subscribeToCharacteristic(characteristic).listen(
-          (data) {
-        // Convert List<int> to readable value
-        final stringValue = String.fromCharCodes(data);
-        print("read $stringValue");
-        onData(stringValue);
-      },
-      onError: (error) {
-        onError("Error reading string data $error");
-      },
-    );
+    flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+      final value = utf8.decode(data); // or interpret as bytes
+      print("Received from BLE: $value");
+    }, onError: (error) {
+      print("Error subscribing to notifications: $error");
+    });
   }
 }
 
@@ -819,6 +814,7 @@ class _MyAppState extends State<MyApp> {
       routes: {
         '/': (context) => LoginPage(),
         '/home': (context) => MyHomePage(),
+        '/game': (context) => GamePage(),
       },
     );
   }
@@ -912,8 +908,8 @@ class GamePage extends StatefulWidget{
 class _GamePageState extends State<GamePage> {
   var game = Game();
   bool isLoading = true;
-  final serviceUuid = Uuid.parse("91bad492-b950-4226-aa2b-4ede9fa42f59");
-  final characteristicUuid = Uuid.parse("ca73b3ba-39f6-4ab3-91ae-186dc9577d99");
+  final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+  final characteristicUuid = Uuid.parse("c8e62f4c-a675-48a6-896a-3d2ec5e48075"); //TODO change from temp to button press
   final internetConnection = ConnectivityCheck();
 
 
@@ -1091,6 +1087,7 @@ class _GamePageState extends State<GamePage> {
     if(myBLE.connectedDevice != null){
       DiscoveredDevice device = myBLE.connectedDevice!;
 
+      //TODO FIGURE OUT DATA FORMATTING
       myBLE.readLiveFromDevice(
         connectedDevice: device,
         serviceUuid: serviceUuid,
@@ -1124,7 +1121,7 @@ class _GamePageState extends State<GamePage> {
           ValueListenableBuilder(
               valueListenable: internetConnection.isOnline,
               builder: (context, online, _){
-                print("Game Page Connectivity: $online");
+                // print("Game Page Connectivity: $online");
                 return online ? Text("") : Text("Offline");
               }
           ),
@@ -1317,7 +1314,7 @@ class _SocialPageState extends State<SocialPage> {
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
-                  print("Game Page Connectivity: $online");
+                  // print("Game Page Connectivity: $online");
                   return online ? Text("") : Text("Offline");
                 }
             ),
@@ -1626,7 +1623,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
-                  print("Game Page Connectivity: $online");
+                  // print("Game Page Connectivity: $online");
                   return online ? Text("") : Text("Offline");
                 }
             ),
@@ -1680,7 +1677,6 @@ class _HistoryPageState extends State<HistoryPage> {
 }
 
 //TODO create user saving option, look at Michael's new code
-//TODO create checkbox for saving user
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
 
@@ -1753,15 +1749,25 @@ class _ProfilePageState extends State<ProfilePage> {
   void connect(DiscoveredDevice device){
     print("Pressed");
     myBLE.connectDevice(device, (bool status) {
+      if(!mounted) return;
       setState(() {
         isConnected = status;
       });
+
       print("Connection status updated: $status");
+
+      if(status){
+        Navigator.pushNamed(context, '/game');
+      }
+      else{
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("BLE connection failed")),
+        );
+      }
     });
 
   }
 
-  //TODO Logout
   void logout(){
     Provider.of<User>(context, listen: false).resetUser();
   }
@@ -1786,7 +1792,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ValueListenableBuilder(
               valueListenable: internetConnection.isOnline,
               builder: (context, online, _){
-                print("Game Page Connectivity: $online");
+                // print("Game Page Connectivity: $online");
                 return online ? Text("") : Text("Offline");
               }
             ),
