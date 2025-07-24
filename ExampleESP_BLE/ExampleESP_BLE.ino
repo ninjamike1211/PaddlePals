@@ -266,17 +266,12 @@ void initAccelerometer() {
 }
 
 void initBLECharacteristics(BLEService* service) {
-
-  // Setup Current Temperature descriptor
-  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
-  currentTempDesc->setValue("Current Temperature");
-
-  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
-  currentTempChar.addDescriptor(currentTempDesc);
-  currentTempChar.addDescriptor(new BLE2902());
+  // Add score descriptor and notification/indication descriptor for communication to characteristics
+  scoreChar.addDescriptor(scoreDesc);
+  scoreChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&currentTempChar);
+  service->addCharacteristic(&scoreChar);
 
   // Setup Max Swing Speed descriptor
   maxSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
@@ -304,12 +299,16 @@ void initBLECharacteristics(BLEService* service) {
   scoreDesc = new BLEDescriptor((uint16_t)0x2901);
   scoreDesc->setValue("Current Score of Player");
 
-  // Add score descriptor and notification/indication descriptor for communication to characteristics
-  scoreChar.addDescriptor(scoreDesc);
-  scoreChar.addDescriptor(new BLE2902());
+  // Setup Current Temperature descriptor
+  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
+  currentTempDesc->setValue("Current Temperature");
+
+  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
+  currentTempChar.addDescriptor(currentTempDesc);
+  currentTempChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&scoreChar);
+  service->addCharacteristic(&currentTempChar);
 }
 
 // Function to get the "true" time accounting for overflows
