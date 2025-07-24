@@ -8,7 +8,7 @@ import time
 class restAPI:
     """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
 
-    API_KEY_TIMEOUT = 1 * 60
+    API_KEY_TIMEOUT = 30 * 60
     ADMIN_USER = 0
     UNKNOWN_USER = -1
 
@@ -212,10 +212,18 @@ class restAPI:
     def _gen_ApiKey(self, user_id:int):
         rand_val = os.urandom(12)
         api_key = base64.b64encode(rand_val).decode('utf-8')
+        while api_key in self.__apiKeys:
+            rand_val = os.urandom(12)
+            api_key = base64.b64encode(rand_val).decode('utf-8')
+
         self.__apiKeys[api_key] = {'user_id':user_id, 'expiration':time.time() + self.API_KEY_TIMEOUT}
 
         rand_val = os.urandom(12)
         renew_key = base64.b64encode(rand_val).decode('utf-8')
+        while api_key in self.__renewalKeys:
+            rand_val = os.urandom(12)
+            renew_key = base64.b64encode(rand_val).decode('utf-8')
+
         self.__renewalKeys[renew_key] = user_id
 
         return api_key, renew_key
@@ -556,21 +564,25 @@ class restAPI:
         
 
     def _api_user_auth_renew(self, params: dict):
+        if 'apiKey' not in params or 'renewalKey' not in params:
+            raise self.APIError(f'Invalid parameters for POST pickle/auth/renew, must include apiKey and renewalKey: {params}', 400)
+        
         old_key = str(params['apiKey'])
-        renew_key_user = str(params['renewalKey'])
+        old_renew_key = str(params['renewalKey'])
+        
+        renew_key_user = self.__renewalKeys.get(old_renew_key)
+        if not renew_key_user:
+            raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
 
         old_key_user = self.__apiKeys.get(old_key)
-        renew_key_user = self.__renewalKeys.get(renew_key_user)
+        if not old_key_user:
+            raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
 
         if old_key_user and old_key_user['user_id'] == renew_key_user:
             self.__apiKeys.pop(old_key)
             api_key, renew_key = self._gen_ApiKey(renew_key_user)
             return {'apiKey':api_key, 'renewalKey':renew_key}
         
-        elif not old_key_user:
-            raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
-        elif not renew_key_user:
-            raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
         else:
             raise self.APIError(f'Key renewal failed, old api key and renewal key do not match', 401)
     

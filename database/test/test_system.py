@@ -27,8 +27,8 @@ def test_login_root(tmp_path):
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'admin', 'password':'root'})
         assert response.status_code == 200
         response_dict = convert_response(response)
-        assert response_dict['success'] == True
         assert response_dict['apiKey']
+        assert response_dict['renewalKey']
 
 def test_create_user(tmp_path):
     with setup_server(tmp_path):
@@ -59,8 +59,8 @@ def test_create_user(tmp_path):
         # Authenticate user
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'testUser', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
         response_dict = convert_response(response)
-        assert response_dict['success'] == True
         assert response_dict['apiKey']
+        assert response_dict['renewalKey']
 
         # Attempt to create duplicate user
         response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'qUzu0pes^hs0b1EhRmfZdve5'})

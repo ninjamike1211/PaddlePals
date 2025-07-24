@@ -1,3 +1,4 @@
+import time
 import pytest
 from database import database_setup
 from database.database_api import restAPI
@@ -264,8 +265,51 @@ def test_check_userAuth(tmp_path):
     assert api._check_userAuth('admin', 'root')
     assert not api._check_userAuth('admin', 'not_R00T')
 
+def test_gen_ApiKey(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Record time for expiration timestamps
+    min_expiration = time.time() + api.API_KEY_TIMEOUT
+
+    # Generate key/renew pairs
+    keyAdmin, renewAdmin = api._gen_ApiKey(0)
+    keyA, renewA = api._gen_ApiKey(1)
+    keyB, renewB = api._gen_ApiKey(2)
+
+    # Check for uniqueness
+    assert keyAdmin != keyA != keyB
+    assert renewAdmin != renewA != renewB
+
+    # Check all values in internal dicts
+    assert list(api._restAPI__apiKeys.keys()) == [keyAdmin, keyA, keyB]
+    assert list(api._restAPI__renewalKeys.keys()) == [renewAdmin, renewA, renewB]
+
+    assert api._restAPI__apiKeys[keyAdmin]['user_id'] == 0
+    assert api._restAPI__apiKeys[keyAdmin]['expiration'] >= min_expiration
+    assert api._restAPI__renewalKeys[renewAdmin] == 0
+
+    assert api._restAPI__apiKeys[keyA]['user_id'] == 1
+    assert api._restAPI__apiKeys[keyA]['expiration'] >= min_expiration
+    assert api._restAPI__renewalKeys[renewA] == 1
+
+    assert api._restAPI__apiKeys[keyB]['user_id'] == 2
+    assert api._restAPI__apiKeys[keyB]['expiration'] >= min_expiration
+    assert api._restAPI__renewalKeys[renewB] == 2
+
+def test_gen_ApiKey_collisions(tmp_path):
+    api = setup_api(tmp_path, useAuth=True)
+
+    for i in range(0, 1000000):
+        api._gen_ApiKey(0)
+
+    assert len(api._restAPI__apiKeys) == 1000000
+    assert len(api._restAPI__renewalKeys) == 1000000
+
 def test_checkApiKey(tmp_path):
     api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Set api key timeout to 10 seconds
+    api.API_KEY_TIMEOUT = 5
 
     # Check there are no api keys before authentication
     assert api._restAPI__apiKeys == {}
@@ -280,6 +324,20 @@ def test_checkApiKey(tmp_path):
     assert api._checkApiKey(keyAdmin) == 0
     assert api._checkApiKey(keyA) == 1
     assert api._checkApiKey(keyB) == 2
+
+    # wait for timeout
+    time.sleep(5)
+
+    # CHeck that keys are invalid now
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._checkApiKey(keyAdmin)
+    assert apiError.value.code == 498
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._checkApiKey(keyA)
+    assert apiError.value.code == 498
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._checkApiKey(keyB)
+    assert apiError.value.code == 498
     
 
 def test_user_get_admin(tmp_path):
@@ -373,8 +431,8 @@ def test_create_user(tmp_path):
     assert user_id == {'createUserTest': 1}
 
     result = api._api_user_auth({'username':'createUserTest', 'password':'create_User_Password0'})
-    assert result['success'] == True
     assert result['apiKey']
+    assert result['renewalKey']
 
 
 def test_create_bad_users(tmp_path):
