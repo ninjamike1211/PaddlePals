@@ -45,7 +45,7 @@ def test_bad_url(tmp_path):
         assert 'Endpoint not found:' in response.text
 
 def test_auth(tmp_path):
-    with setup_server(tmp_path, users={'testUserA':'t3stUserP@ssA', 'testUserB':'t3stUserP@ssB'}):
+    with setup_server(tmp_path, users={'testUserA':'t3stUserP@ssA', 'testUserB':'t3stUserP@ssB'}) as server:
 
         # Verify we can't access without authentication
         response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1})
@@ -57,8 +57,7 @@ def test_auth(tmp_path):
         assert 'Authentication required, please obtain an API key through pickle/user/auth' in response.text
 
         # Set api token timeout for later testing
-        # server.api.API_KEY_TIMEOUT = 2 * 60
-        # before_time = time.time()
+        server.api.API_KEY_TIMEOUT = 1 * 60
 
         # Get api tokens for all users
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'admin', 'password':'root'})
@@ -72,6 +71,9 @@ def test_auth(tmp_path):
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'testUserB', 'password':'t3stUserP@ssB'})
         userB_key = response.json()['apiKey']
         userB_renew = response.json()['renewalKey']
+
+        # Record timestamp after last api key is registered
+        before_time = time.time()
 
         # Check user view permissions
         response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {root_key}'})
@@ -122,52 +124,50 @@ def test_auth(tmp_path):
         response = requests.post("http://localhost:8080/pickle/user/set", json={'user_id':2, 'username':'newTestUserB'}, headers={'Authorization':f'Bearer {userB_key}'})
         assert response.status_code == 200
 
-        # # Wait for timeout
-        # time.sleep(time.time() - before_time + 2.5*60)
+        # Wait for timeout
+        time.sleep(time.time() - before_time + server.api.API_KEY_TIMEOUT)
 
-        # # Check that all keys are expired
-        # response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {root_key}'})
-        # assert response.status_code == 498
+        # Check that all keys are expired
+        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {root_key}'})
+        assert response.status_code == 498
         
-        # response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {userA_key}'})
-        # assert response.status_code == 498
+        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {userA_key}'})
+        assert response.status_code == 498
 
-        # response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {userB_key}'})
-        # assert response.status_code == 498
+        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'newTestUserB'}, headers={'Authorization':f'Bearer {userB_key}'})
+        assert response.status_code == 498
 
-        # # Renew all keys
-        # response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':root_key, 'renewalKey':root_renew})
-        # assert response.status_code == 200
-        # new_root_key = response.json()['apiKey']
-        # new_root_renew = response.json()['renewalKey']
-        # assert root_key != new_root_key
-        # assert root_renew != new_root_renew
+        # Renew all keys
+        response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':root_key, 'renewalKey':root_renew})
+        assert response.status_code == 200
+        new_root_key = response.json()['apiKey']
+        new_root_renew = response.json()['renewalKey']
+        assert root_key != new_root_key
+        assert root_renew != new_root_renew
         
-        # response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':userA_key, 'renewalKey':userA_renew})
-        # assert response.status_code == 200
-        # new_userA_key = response.json()['apiKey']
-        # new_userA_renew = response.json()['renewalKey']
-        # assert userA_key != new_userA_key
-        # assert userA_renew != new_userA_renew
+        response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':userA_key, 'renewalKey':userA_renew})
+        assert response.status_code == 200
+        new_userA_key = response.json()['apiKey']
+        new_userA_renew = response.json()['renewalKey']
+        assert userA_key != new_userA_key
+        assert userA_renew != new_userA_renew
 
-        # response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':userB_key, 'renewalKey':userB_renew})
-        # assert response.status_code == 200
-        # new_userB_key = response.json()['apiKey']
-        # new_userB_renew = response.json()['renewalKey']
-        # assert userB_key != new_userB_key
-        # assert userB_renew != new_userB_renew
+        response = requests.post("http://localhost:8080/pickle/user/auth_renew", json={'apiKey':userB_key, 'renewalKey':userB_renew})
+        assert response.status_code == 200
+        new_userB_key = response.json()['apiKey']
+        new_userB_renew = response.json()['renewalKey']
+        assert userB_key != new_userB_key
+        assert userB_renew != new_userB_renew
 
-        # # Check that new keys work
-        # response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {new_root_key}'})
-        # assert response.status_code == 200
-        # assert all(i in response.json().keys() for i in ('1', '2'))
+        # Check that new keys work
+        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {new_root_key}'})
+        assert response.status_code == 200
+        assert all(i in response.json().keys() for i in ('1', '2'))
 
-        # response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1}, headers={'Authorization':f'Bearer {new_userA_key}'})
-        # assert response.status_code == 200
-        # assert '1' in response.json().keys()
+        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1}, headers={'Authorization':f'Bearer {new_userA_key}'})
+        assert response.status_code == 200
+        assert '1' in response.json().keys()
 
-        # response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2}, headers={'Authorization':f'Bearer {new_userB_key}'})
-        # assert response.status_code == 200
-        # assert '2' in response.json().keys()
-
-    # server.close()
+        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2}, headers={'Authorization':f'Bearer {new_userB_key}'})
+        assert response.status_code == 200
+        assert '2' in response.json().keys()

@@ -571,11 +571,11 @@ class restAPI:
         old_renew_key = str(params['renewalKey'])
         
         renew_key_user = self.__renewalKeys.get(old_renew_key)
-        if not renew_key_user:
+        if renew_key_user == None:
             raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
 
         old_key_user = self.__apiKeys.get(old_key)
-        if not old_key_user:
+        if old_key_user == None:
             raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
 
         if old_key_user and old_key_user['user_id'] == renew_key_user:
