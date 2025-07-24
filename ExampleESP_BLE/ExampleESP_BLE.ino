@@ -82,7 +82,8 @@ Adafruit_MPU6050 mpu;
 #define SERVICE_UUID "6c914f48-d292-4d61-a197-d4d5500b60cc"
 
 // Score Characteristic and Descriptor
-BLECharacteristic scoreChar("17923275-9745-4b89-b6b2-a59aa7533495", BLECharacteristic::PROPERTY_NOTIFY);
+// Old UUID: 17923275-9745-4b89-b6b2-a59aa7533495
+BLECharacteristic scoreChar("080c6fb5-ad9b-4372-a9e7-0e03fa5c4c01", BLECharacteristic::PROPERTY_NOTIFY);
 BLEDescriptor* scoreDesc;
 
 // Max Swing Speed Characteristic and Descriptor
@@ -299,7 +300,7 @@ void initBLECharacteristics(BLEService* service) {
   // Add characteristic to service
   service->addCharacteristic(&newSwingSpeedChar);
 
-    // Setup score descriptor
+  // Setup score descriptor
   scoreDesc = new BLEDescriptor((uint16_t)0x2901);
   scoreDesc->setValue("Current Score of Player");
 
@@ -555,11 +556,26 @@ void clickHandler(Button2& btn) {
   if (btn == buttonIncrement) {
     pointsThisGame++;
     Serial.println("Increment Button pressed - score incremented");
+
+
+    // Immediately send a notify message
+    static char scoreArray[50];
+    pointsString = String(pointsThisGame);
+    pointsString.toCharArray(scoreArray, 50);
+    scoreChar.setValue(scoreArray);
+    scoreChar.notify();
   }
   else if (btn == buttonDecrement) {
     if (pointsThisGame > 0) {
       pointsThisGame--;
       Serial.println("Decrement Button pressed - score decremented");
+
+      // Immediately send a notify message
+      static char scoreArray[50];
+      pointsString = String(pointsThisGame);
+      pointsString.toCharArray(scoreArray, 50);
+      scoreChar.setValue(scoreArray);
+      scoreChar.notify();
     }
     else {
       Serial.println("Score is currently 0 - ignoring.");
@@ -623,6 +639,4 @@ float calculateForce(float sensorValue) {
 
   // Using 10k resistor - solve for R_f
   resistance = ((3.3 - voltage) * 10000)/voltage;
-
-
 }
