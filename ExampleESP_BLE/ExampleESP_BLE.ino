@@ -1,4 +1,3 @@
-// Basic demonstration of 2-way connection between phone and ESP-32
 // Credit to Evandro Copercini for original example code: 
 // https://docs.espressif.com/projects/arduino-esp32/en/latest/api/bluetooth.html
 
@@ -22,7 +21,6 @@
 // Credit to TechKnowLab for help with the FSR:
 // https://techknowlab.com/thin-film-pressureor-force-sensor-with-arduino/
 
-// NOTE - NEED TO ADD INTERRUPT() FOR SWING SPEED!
 
 // Libraries for BLE communication
 #include <BLEDevice.h>
@@ -43,28 +41,51 @@
 #define button_increment_pin 18
 #define button_decrement_pin 17
 
-// Seven-segment pins
+// Seven-segment pins - CHANGE LATER
 
-#define seg_1_a 1
-#define seg_1_b 1
-#define seg_1_c 1
-#define seg_1_d 1
-#define seg_1_e 1
-#define seg_1_f 1
-#define seg_1_g 1
+// Segment pins for display 1
+#define seg1_a 2
+#define seg1_b 3
+#define seg1_c 4
+#define seg1_d 5
+#define seg1_e 6
+#define seg1_f 7
+#define seg1_g 8
 
-#define seg_2_a 1
-#define seg_2_b 1
-#define seg_2_c 1
-#define seg_2_d 1
-#define seg_2_e 1
-#define seg_2_f 1
-#define seg_2_g 1
+// Segment pins for display 2
+#define seg2_a 9
+#define seg2_b 10
+#define seg2_c 11
+#define seg2_d 12
+#define seg2_e 13
+#define seg2_f 14
+#define seg2_g 15
 
 #define fsr_1_pin 1
 #define fsr_2_pin 1
 #define fsr_3_pin 1
 #define fsr_4_pin 1
+
+// Create array to get quadrant hits
+int quadrantHits[4] = {0, 0, 0, 0};  // Q1-Q4 hit counts
+
+// Create table to store correct states for segments corresponding to digits
+const bool digitSegments[10][7] = {
+  {1,1,1,1,1,1,0}, // 0
+  {0,1,1,0,0,0,0}, // 1
+  {1,1,0,1,1,0,1}, // 2
+  {1,1,1,1,0,0,1}, // 3
+  {0,1,1,0,0,1,1}, // 4
+  {1,0,1,1,0,1,1}, // 5
+  {1,0,1,1,1,1,1}, // 6
+  {1,1,1,0,0,0,0}, // 7
+  {1,1,1,1,1,1,1}, // 8
+  {1,1,1,1,0,1,1}  // 9
+};
+
+// Group the seven segment display pins based on display number
+int segPins1[] = {seg1_a, seg1_b, seg1_c, seg1_d, seg1_e, seg1_f, seg1_g};
+int segPins2[] = {seg2_a, seg2_b, seg2_c, seg2_d, seg2_e, seg2_f, seg2_g};
 
 // Create Button2 buttons
 Button2 buttonIncrement;
@@ -266,12 +287,17 @@ void initAccelerometer() {
 }
 
 void initBLECharacteristics(BLEService* service) {
-  // Add score descriptor and notification/indication descriptor for communication to characteristics
-  scoreChar.addDescriptor(scoreDesc);
-  scoreChar.addDescriptor(new BLE2902());
+
+  // Setup Current Temperature descriptor
+  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
+  currentTempDesc->setValue("Current Temperature");
+
+  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
+  currentTempChar.addDescriptor(currentTempDesc);
+  currentTempChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&scoreChar);
+  service->addCharacteristic(&currentTempChar);
 
   // Setup Max Swing Speed descriptor
   maxSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
@@ -299,16 +325,22 @@ void initBLECharacteristics(BLEService* service) {
   scoreDesc = new BLEDescriptor((uint16_t)0x2901);
   scoreDesc->setValue("Current Score of Player");
 
-  // Setup Current Temperature descriptor
-  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
-  currentTempDesc->setValue("Current Temperature");
-
-  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
-  currentTempChar.addDescriptor(currentTempDesc);
-  currentTempChar.addDescriptor(new BLE2902());
+  // Add score descriptor and notification/indication descriptor for communication to characteristics
+  scoreChar.addDescriptor(scoreDesc);
+  scoreChar.addDescriptor(new BLE2902());
 
   // Add characteristic to service
-  service->addCharacteristic(&currentTempChar);
+  service->addCharacteristic(&scoreChar);
+}
+
+void initSevenSegmentDisplays() {
+  // Write all of the pins as output + high (since with common anode, low = on, high = off)
+  for (int i = 0; i < 7; i++) {
+    pinMode(segPins1[i], OUTPUT);
+    pinMode(segPins2[i], OUTPUT);
+    digitalWrite(segPins1[i], HIGH);
+    digitalWrite(segPins2[i], HIGH);
+  }
 }
 
 // Function to get the "true" time accounting for overflows
@@ -344,6 +376,9 @@ void setup() {
 
   // Setup Accelerometer
   initAccelerometer();
+
+  // Setup seven-segment displays
+  initSevenSegmentDisplays();
 
   // Calibrate gyro
   calibrateGyro();
@@ -562,12 +597,16 @@ void clickHandler(Button2& btn) {
     pointsString = String(pointsThisGame);
     pointsString.toCharArray(scoreArray, 50);
 
+    // If nullptr, through error
     if (scoreChar == nullptr) {
       Serial.println("ERROR: scoreChar is NULL");
     }
 
     scoreChar.setValue(scoreArray);
     scoreChar.notify();
+
+    // Update seven-segment displays
+    updateSevenSegmentDisplays(pointsThisGame);
   }
   else if (btn == buttonDecrement) {
     if (pointsThisGame > 0) {
@@ -586,6 +625,9 @@ void clickHandler(Button2& btn) {
 
       scoreChar.setValue(scoreArray);
       scoreChar.notify();
+
+      // Update seven-segment displays
+      updateSevenSegmentDisplays(pointsThisGame);
     }
     else {
       Serial.println("Score is currently 0 - ignoring.");
@@ -638,15 +680,85 @@ float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, boo
   return finalSwingSpeed;
 }
 
-float calculateForce(float sensorValue) {
-  // Get the voltage from the analog value
-  float voltage = sensorValue * (3.3 / 1023.0);
+float calculateForce(int analogValue) {
+  // Convert ADC to voltage (assuming ESP32 12-bit ADC and 3.3V)
+  float voltage = analogValue * (3.3 / 4095.0);
 
-  float resistance;
+  // Avoid divide-by-zero errors
+  if (voltage <= 0.01) return 0;
 
-  // Use the voltage divider equation to calculate resistance
-  // Vout = Vcc * (R_s / (R_s + R_f))
+  // Calculate resistance of the FSR
+  const float R_FIXED = 10000.0;  // 10k Ohm resistor
+  float resistance = (3.3 - voltage) * R_FIXED / voltage;
 
-  // Using 10k resistor - solve for R_f
-  resistance = ((3.3 - voltage) * 10000)/voltage;
+  // From datasheet: R = 153.18 / Force
+  // Use approximate equation F = K/R due to linear relationship in log-log graph from data
+  // Technically it's more like F = (R / 153.18)^(-1.43), but this is approximately close enough.
+  // F is in Kg
+  float force = 153.18 / resistance;  // in kg (approximate)
+
+  // Convert to grams
+  return force * 1000.0;
+}
+
+void updateQuadrantHits() {
+  int analogValues[4] = {
+    analogRead(fsr_1_pin),
+    analogRead(fsr_2_pin),
+    analogRead(fsr_3_pin),
+    analogRead(fsr_4_pin)
+  };
+
+  float forces[4];
+  for (int i = 0; i < 4; i++) {
+    forces[i] = calculateForce(analogValues[i]);
+  }
+
+  // Find max force and index
+  int maxIndex = 0;
+  float maxForce = forces[0];
+  for (int i = 1; i < 4; i++) {
+    if (forces[i] > maxForce) {
+      maxForce = forces[i];
+      maxIndex = i;
+    }
+  }
+
+  // Only count hits above noise threshold
+  const float HIT_THRESHOLD_GRAMS = 100.0;  // adjust as needed
+  if (maxForce >= HIT_THRESHOLD_GRAMS) {
+    quadrantHits[maxIndex]++;
+
+    // Format BLE message
+    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + "|Q2 Hits: " + String(quadrantHits[1]) +
+                        "|Q3 Hits: " + String(quadrantHits[2]) + "|Q4 Hits: " + String(quadrantHits[3]);
+
+    Serial.println(hitSummary);
+    // TODO: send `hitSummary` over BLE characteristic
+  }
+}
+
+// Update seven segment displays
+void updateSevenSegmentDisplays(int score) {
+  int tens = score / 10;
+  int units = score % 10;
+  displayDigit(tens, segPins1);   // left digit
+  displayDigit(units, segPins2);  // right digit
+}
+
+// Clear seven segment displays
+void clearSevenSegmentDisplays() {
+  for (int i = 0; i < 7; i++) {
+    digitalWrite(segPins1[i], HIGH);  // HIGH = off for common anode
+    digitalWrite(segPins2[i], HIGH);
+  }
+}
+
+// Seven segment display logic
+void displayDigit(int digit, int segPins[]) {
+  // Go through table for the digit, turn segments on/off based on if they are 1 or 0
+  for (int i = 0; i < 7; i++) {
+    // If 1, set as low - else, set as high
+    digitalWrite(segPins[i], digitSegments[digit][i] ? LOW : HIGH);
+  }
 }
