@@ -70,7 +70,7 @@
 int quadrantHits[4] = {0, 0, 0, 0};  // Q1-Q4 hit counts
 
 // Create table to store correct states for segments corresponding to digits
-const bool digitSegments[10][7] = {
+const bool digitSegments[16][7] = {
   {1,1,1,1,1,1,0}, // 0
   {0,1,1,0,0,0,0}, // 1
   {1,1,0,1,1,0,1}, // 2
@@ -80,7 +80,13 @@ const bool digitSegments[10][7] = {
   {1,0,1,1,1,1,1}, // 6
   {1,1,1,0,0,0,0}, // 7
   {1,1,1,1,1,1,1}, // 8
-  {1,1,1,1,0,1,1}  // 9
+  {1,1,1,1,0,1,1}, // 9
+  {1,1,1,0,1,1,1}, // A
+  {0,0,1,1,1,1,1}, // b
+  {1,0,0,1,1,1,0}, // C
+  {0,1,1,1,1,0,1}, // d
+  {1,0,0,1,1,1,1}, // E
+  {1,0,0,0,1,1,1}  // F
 };
 
 // Group the seven segment display pins based on display number
@@ -96,27 +102,28 @@ String device_name = "ESP32-BT";
 //BLE server name
 #define bleServerName "ESP32_BLEServer"
 
+// Characteristic UUIDs
+#define SCORE_CHAR_UUID "27923275-9745-4b89-b6b2-a59aa7533495"
+#define MAX_SWING_SPEED_CHAR_UUID "8b2c1a45-7d3e-4f89-a2b1-c5d6e7f8a9b0"
+#define HIT_SUMMARY_CHAR_UUID "9c3d2b56-8e4f-5a90-b3c2-d6e7f8a9b0c1"
+#define TEMPERATURE_CHAR_UUID "ad4e3c67-9f5a-6b01-c4d3-e7f8a9b0c1d2"
+
 Adafruit_MPU6050 mpu;
 
 // BLE Descriptor stuff:
 // Service UUID
 #define SERVICE_UUID "6c914f48-d292-4d61-a197-d4d5500b60cc"
 
-// Score Characteristic and Descriptor
-// Old UUID: 17923275-9745-4b89-b6b2-a59aa7533495
-BLECharacteristic scoreChar("080c6fb5-ad9b-4372-a9e7-0e03fa5c4c01", BLECharacteristic::PROPERTY_NOTIFY);
+// All characteristics as pointers - will be created via service
+BLECharacteristic* scoreChar = nullptr;
+BLECharacteristic* maxSwingSpeedChar = nullptr;
+BLECharacteristic* hitSummaryChar = nullptr;
+BLECharacteristic* currentTempChar = nullptr;
+
+// Descriptors
 BLEDescriptor* scoreDesc;
-
-// Max Swing Speed Characteristic and Descriptor
-BLECharacteristic maxSwingSpeedChar("84331acb-f95d-4ed1-baf2-714ca978878a", BLECharacteristic::PROPERTY_NOTIFY);
 BLEDescriptor* maxSwingSpeedDesc;
-
-// Newest Swing Speed Characteristic and Descriptor
-BLECharacteristic newSwingSpeedChar("af2ce43c-03a4-4fc4-862f-510ebb114f19", BLECharacteristic::PROPERTY_NOTIFY);
-BLEDescriptor* newSwingSpeedDesc;
-
-// Current Temperature Characteristic and Descriptor
-BLECharacteristic currentTempChar("c8e62f4c-a675-48a6-896a-3d2ec5e48075", BLECharacteristic::PROPERTY_NOTIFY);
+BLEDescriptor* hitSummaryDesc;
 BLEDescriptor* currentTempDesc;
 
 // Bool to determine whether to use directional bias or not
@@ -127,6 +134,9 @@ bool deviceConnected = false;
 
 // Variable to store the points from Current Game
 int pointsThisGame = 0;
+
+// Variable to store the opponent's points from Current Game
+int opponentPoints = 0;
 
 // Variable to store the total points from all time
 int totalPointsAllTime = 0;
@@ -139,7 +149,7 @@ bool swingActive = false;
 float swingPeakSpeed = 0.0;
 unsigned long swingStartTime = 0;
 
-// Adjusted threshold: 0.133 -> 0.4 -> 0.60
+// Adjusted threshold: 0.133 -> 0.4 -> 0.60 -> 0.70
 const float swingThreshold = 0.70;  // m/s threshold
 const unsigned long swingCooldown = 500; // milliseconds
 unsigned long lastSwingEndTime = 0;
@@ -169,13 +179,35 @@ String currentTemperature = "";
 String latencyString = "";
 bool messageFinishedSending = false;
 
+
 //Setup callbacks onConnect and onDisconnect
 class MyServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
+    Serial.println("Device connected via BLE");
   };
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
+    Serial.println("Device disconnected from BLE");
+    // Restart advertising
+    BLEDevice::getAdvertising()->start();
+  }
+};
+
+// Callback for when notifications are enabled/disabled
+class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    String uuid = pCharacteristic->getUUID().toString().c_str();
+    Serial.print("Write received on characteristic: ");
+    Serial.println(uuid);
+    
+    if (uuid == SCORE_CHAR_UUID) {
+      Serial.println("Score characteristic write detected - checking for notification enable");
+    }
+  }
+  
+  void onNotify(BLECharacteristic* pCharacteristic) {
+    Serial.println("Notification sent for characteristic: " + String(pCharacteristic->getUUID().toString().c_str()));
   }
 };
 
@@ -226,60 +258,60 @@ void initAccelerometer() {
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   Serial.print("Accelerometer range set to: ");
   switch (mpu.getAccelerometerRange()) {
-  case MPU6050_RANGE_2_G:
-    Serial.println("+-2G");
-    break;
-  case MPU6050_RANGE_4_G:
-    Serial.println("+-4G");
-    break;
-  case MPU6050_RANGE_8_G:
-    Serial.println("+-8G");
-    break;
-  case MPU6050_RANGE_16_G:
-    Serial.println("+-16G");
-    break;
+    case MPU6050_RANGE_2_G:
+      Serial.println("+-2G");
+      break;
+    case MPU6050_RANGE_4_G:
+      Serial.println("+-4G");
+      break;
+    case MPU6050_RANGE_8_G:
+      Serial.println("+-8G");
+      break;
+    case MPU6050_RANGE_16_G:
+      Serial.println("+-16G");
+      break;
   }
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   Serial.print("Gyro range set to: ");
   switch (mpu.getGyroRange()) {
-  case MPU6050_RANGE_250_DEG:
-    Serial.println("+- 250 deg/s");
-    break;
-  case MPU6050_RANGE_500_DEG:
-    Serial.println("+- 500 deg/s");
-    break;
-  case MPU6050_RANGE_1000_DEG:
-    Serial.println("+- 1000 deg/s");
-    break;
-  case MPU6050_RANGE_2000_DEG:
-    Serial.println("+- 2000 deg/s");
-    break;
+    case MPU6050_RANGE_250_DEG:
+      Serial.println("+- 250 deg/s");
+      break;
+    case MPU6050_RANGE_500_DEG:
+      Serial.println("+- 500 deg/s");
+      break;
+    case MPU6050_RANGE_1000_DEG:
+      Serial.println("+- 1000 deg/s");
+      break;
+    case MPU6050_RANGE_2000_DEG:
+      Serial.println("+- 2000 deg/s");
+      break;
   }
 
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
   Serial.print("Filter bandwidth set to: ");
   switch (mpu.getFilterBandwidth()) {
-  case MPU6050_BAND_260_HZ:
-    Serial.println("260 Hz");
-    break;
-  case MPU6050_BAND_184_HZ:
-    Serial.println("184 Hz");
-    break;
-  case MPU6050_BAND_94_HZ:
-    Serial.println("94 Hz");
-    break;
-  case MPU6050_BAND_44_HZ:
-    Serial.println("44 Hz");
-    break;
-  case MPU6050_BAND_21_HZ:
-    Serial.println("21 Hz");
-    break;
-  case MPU6050_BAND_10_HZ:
-    Serial.println("10 Hz");
-    break;
-  case MPU6050_BAND_5_HZ:
-    Serial.println("5 Hz");
-    break;
+    case MPU6050_BAND_260_HZ:
+      Serial.println("260 Hz");
+      break;
+    case MPU6050_BAND_184_HZ:
+      Serial.println("184 Hz");
+      break;
+    case MPU6050_BAND_94_HZ:
+      Serial.println("94 Hz");
+      break;
+    case MPU6050_BAND_44_HZ:
+      Serial.println("44 Hz");
+      break;
+    case MPU6050_BAND_21_HZ:
+      Serial.println("21 Hz");
+      break;
+    case MPU6050_BAND_10_HZ:
+      Serial.println("10 Hz");
+      break;
+    case MPU6050_BAND_5_HZ:
+      Serial.println("5 Hz");
+      break;
   }
 
   Serial.println("");
@@ -287,50 +319,89 @@ void initAccelerometer() {
 }
 
 void initBLECharacteristics(BLEService* service) {
-
-  // Setup Current Temperature descriptor
-  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
-  currentTempDesc->setValue("Current Temperature");
-
-  // Add current temperature descriptor and notification/indication descriptor for communication to characteristics
-  currentTempChar.addDescriptor(currentTempDesc);
-  currentTempChar.addDescriptor(new BLE2902());
-
-  // Add characteristic to service
-  service->addCharacteristic(&currentTempChar);
-
-  // Setup Max Swing Speed descriptor
-  maxSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
-  maxSwingSpeedDesc->setValue("Max Swing Speed");
-
-  // Add max swing speed descriptor and notification/indication descriptor for communication to characteristics
-  maxSwingSpeedChar.addDescriptor(maxSwingSpeedDesc);
-  maxSwingSpeedChar.addDescriptor(new BLE2902());
-
-  // Add characteristic to service
-  service->addCharacteristic(&maxSwingSpeedChar);
+  Serial.println("Initializing BLE characteristics...");
   
-  // Setup Newest Swing Speed descriptor
-  newSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
-  newSwingSpeedDesc->setValue("Newest Swing Speed");
-
-  // Add new swing speed descriptor and notification/indication descriptor for communication to characteristics
-  newSwingSpeedChar.addDescriptor(newSwingSpeedDesc);
-  newSwingSpeedChar.addDescriptor(new BLE2902());
-
-  // Add characteristic to service
-  service->addCharacteristic(&newSwingSpeedChar);
-
-  // Setup score descriptor
+  // Create score characteristic
+  Serial.println("Creating score characteristic...");
+  scoreChar = service->createCharacteristic(
+    SCORE_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  
+  if (scoreChar == nullptr) {
+    Serial.println("ERROR: Failed to create score characteristic!");
+    return;
+  }
+  
+  // Add descriptors to score characteristic
   scoreDesc = new BLEDescriptor((uint16_t)0x2901);
   scoreDesc->setValue("Current Score of Player");
+  scoreChar->addDescriptor(scoreDesc);
+  
+  // Add CCCD for notifications
+  BLE2902* scoreCCCD = new BLE2902();
+  scoreCCCD->setNotifications(true);
+  scoreChar->addDescriptor(scoreCCCD);
+  
+  // Add callback
+  scoreChar->setCallbacks(new MyCharacteristicCallbacks());
+  Serial.println("Score characteristic setup complete");
 
-  // Add score descriptor and notification/indication descriptor for communication to characteristics
-  scoreChar.addDescriptor(scoreDesc);
-  scoreChar.addDescriptor(new BLE2902());
+    // Create max swing speed characteristic
+  Serial.println("Creating max swing speed characteristic...");
+  maxSwingSpeedChar = service->createCharacteristic(
+    MAX_SWING_SPEED_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  
+  if (maxSwingSpeedChar == nullptr) {
+    Serial.println("ERROR: Failed to create max swing speed characteristic!");
+    return;
+  }
+  
+  maxSwingSpeedChar->addDescriptor(maxSwingSpeedDesc);
+  maxSwingSpeedChar->addDescriptor(new BLE2902());
+  Serial.println("Max swing speed characteristic setup complete");
 
-  // Add characteristic to service
-  service->addCharacteristic(&scoreChar);
+  
+  // Create new swing speed characteristic
+  Serial.println("Creating new swing speed characteristic...");
+  hitSummaryChar = service->createCharacteristic(
+    HIT_SUMMARY_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  
+  if (hitSummaryChar == nullptr) {
+    Serial.println("ERROR: Failed to create new hit summary characteristic!");
+    return;
+  }
+  
+  hitSummaryDesc = new BLEDescriptor((uint16_t)0x2901);
+  hitSummaryDesc->setValue("Hit Summary");
+  hitSummaryChar->addDescriptor(hitSummaryDesc);
+  hitSummaryChar->addDescriptor(new BLE2902());
+  Serial.println("Hit summary setup complete");
+
+    // Create temperature characteristic
+  Serial.println("Creating temperature characteristic...");
+  currentTempChar = service->createCharacteristic(
+    TEMPERATURE_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  
+  if (currentTempChar == nullptr) {
+    Serial.println("ERROR: Failed to create temperature characteristic!");
+    return;
+  }
+
+  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
+  currentTempDesc->setValue("Current Temperature");
+  currentTempChar->addDescriptor(currentTempDesc);
+  currentTempChar->addDescriptor(new BLE2902());
+  Serial.println("Temperature characteristic setup complete");
+  
+  Serial.println("BLE characteristics initialization complete");
+
 }
 
 void initSevenSegmentDisplays() {
@@ -409,9 +480,15 @@ void setup() {
   // Start advertising
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(SERVICE_UUID);
+
+  advertising->setScanResponse(false);
+  advertising->setMinPreferred(0x0);
+
   server->getAdvertising()->start();
 
   Serial.println("ESP32 setup for data communication - connect Android App.");
+
+  Serial.println("BLE Service started and advertising...");
 }
 
 // Switch behavior so it sends statistics over time
@@ -435,15 +512,25 @@ void loop() {
     buttonIncrement.loop();
     buttonDecrement.loop();
 
-    // Try sending initial score
-    // Track whether we've already sent the initial score
+    // Try sending initial score - but only after a small delay to ensure BLE is ready
     static bool sentInitialScore = false;
 
-    if (deviceConnected && !sentInitialScore) {
-      scoreChar.setValue("0");
-      scoreChar.notify();
-      Serial.println("Initial score sent to connected device.");
-      sentInitialScore = true;
+    static unsigned long connectionTime = 0;
+    
+    // Record when we first connected
+    if (!sentInitialScore && connectionTime == 0) {
+      connectionTime = millis();
+    }
+
+        // Wait 1 second after connection before sending initial score
+    if (deviceConnected && !sentInitialScore && (millis() - connectionTime > 1000)) {
+      if (scoreChar != nullptr) {
+        scoreChar->setValue("0");
+        scoreChar->notify();
+        Serial.println("Initial score sent to connected device.");
+        Serial.println("Notification attempt result: " + String(scoreChar->getValue().c_str()));
+        sentInitialScore = true;
+      }
     }
 
     // Use a 10ms loop to check for swings
@@ -498,22 +585,23 @@ void loop() {
           lastSwingEndTime = millis();
 
           // Record peak and update BLE logic
-          newSwingString = String(swingPeakSpeed) + " m/s";
+          newSwingString = String(swingPeakSpeed, 2) + " m/s";
           float currentMax = checkMaxSwingSpeed(swingPeakSpeed);
 
           static char maxSwingArray[50];
-          static char newSwingArray[50];
-          maxSwingString = String(currentMax) + " m/s";
+          maxSwingString = String(currentMax, 2) + " m/s";
           maxSwingString.toCharArray(maxSwingArray, 50);
-          newSwingString.toCharArray(newSwingArray, 50);
 
-          maxSwingSpeedChar.setValue(maxSwingArray);
-          maxSwingSpeedChar.notify();
-          newSwingSpeedChar.setValue(newSwingArray);
-          newSwingSpeedChar.notify();
+          if (maxSwingSpeedChar != nullptr) {
+            maxSwingSpeedChar->setValue(maxSwingArray);
+            maxSwingSpeedChar->notify();
+          }
 
           Serial.print("SWING DETECTED: ");
           Serial.println(newSwingString);
+
+          Serial.print("Current Max: ");
+          Serial.println(maxSwingString);
         }
       }
     }
@@ -537,8 +625,8 @@ void loop() {
         // }
 
         // Send stats over in string format
-        pointsString = String(pointsThisGame);
-        currentTemperature = String(temp.temperature) + " Celsius";
+        pointsString = String(pointsThisGame) + "," + String(opponentPoints);
+        currentTemperature = String(temp.temperature, 1) + " Celsius";
         
         // After calculations, start the transmission timer
         // Note - this can overflow after 70 min of arduino runtime - might need to fix later
@@ -551,11 +639,17 @@ void loop() {
         static char currentTemperatureArray[50];
         currentTemperature.toCharArray(currentTemperatureArray, 50);
 
-        scoreChar.setValue(scoreArray);
-        scoreChar.notify();
+        
+        if (scoreChar != nullptr) {
+          scoreChar->setValue(scoreArray);
+          scoreChar->notify();
+        }
 
-        currentTempChar.setValue(currentTemperatureArray);
-        currentTempChar.notify();
+        
+        if (currentTempChar != nullptr) {
+          currentTempChar->setValue(currentTemperatureArray);
+          currentTempChar->notify();
+        }
 
         endTransmissionTime = getSafeMicros();
 
@@ -576,6 +670,13 @@ void loop() {
         // Print an empty line to seperate data
         Serial.println();
     }
+    else {
+      // Reset connection tracking when disconnected
+      static unsigned long connectionTime = 0;
+      static bool sentInitialScore = false;
+      connectionTime = 0;
+      sentInitialScore = false;
+    }
   }
 }
 
@@ -587,51 +688,42 @@ void incrementPoints() {
 }
 
 void clickHandler(Button2& btn) {
-  if (btn == buttonIncrement) {
+  bool scoreChanged = false;
+
+  if (btn == buttonIncrement && pointsThisGame <= 15) {
     pointsThisGame++;
-    Serial.println("Increment Button pressed - score incremented");
-
-
-    // Immediately send a notify message
-    static char scoreArray[50];
-    pointsString = String(pointsThisGame);
-    pointsString.toCharArray(scoreArray, 50);
-
-    // If nullptr, through error
-    if (scoreChar == nullptr) {
-      Serial.println("ERROR: scoreChar is NULL");
-    }
-
-    scoreChar.setValue(scoreArray);
-    scoreChar.notify();
-
-    // Update seven-segment displays
-    updateSevenSegmentDisplays(pointsThisGame);
+    Serial.println("Player score incremented");
+    scoreChanged = true;
   }
-  else if (btn == buttonDecrement) {
-    if (pointsThisGame > 0) {
-      pointsThisGame--;
-      Serial.println("Decrement Button pressed - score decremented");
+  else if (btn == buttonDecrement && opponentPoints <= 15) {
+    opponentPoints++;
+    Serial.println("Opponent score incremented");
+    scoreChanged = true;
+  }
+  else if (pointsThisGame + 1 > 15) {
+    Serial.println("Player Score is 15 - increment ignored");
+  }
+  else if (opponentPoints + 1 > 15) {
+    Serial.println("Opponent Score is 15 - increment ignored");
+  }
 
-      // Immediately send a notify message
-      static char scoreArray[50];
-      pointsString = String(pointsThisGame);
-      pointsString.toCharArray(scoreArray, 50);
-
-      
-      if (scoreChar == nullptr) {
-        Serial.println("ERROR: scoreChar is NULL");
-      }
-
-      scoreChar.setValue(scoreArray);
-      scoreChar.notify();
-
-      // Update seven-segment displays
-      updateSevenSegmentDisplays(pointsThisGame);
+  // Immediately update BLE if connected
+  if (deviceConnected && scoreChanged) {
+    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints);
+    static char scoreArray[50];
+    scoreUpdate.toCharArray(scoreArray, 50);
+    
+    if (&scoreChar == nullptr) {
+      Serial.println("ERROR: scoreChar is NULL");
+    } else {
+      scoreChar->setValue(scoreArray);
+      scoreChar->notify();
     }
-    else {
-      Serial.println("Score is currently 0 - ignoring.");
-    }
+  }
+
+  // Update seven-segment displays if score changed
+  if (scoreChanged) {
+    updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
   }
 }
 
@@ -655,7 +747,8 @@ bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
 }
 
 float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
-  float averagePoints = totalNumberOfPoints / numberOfGames;
+  if (numberOfGames == 0) return 0.0;
+  float averagePoints = (float)totalNumberOfPoints / numberOfGames;
   return averagePoints;
 }
 
@@ -730,20 +823,24 @@ void updateQuadrantHits() {
     quadrantHits[maxIndex]++;
 
     // Format BLE message
-    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + "|Q2 Hits: " + String(quadrantHits[1]) +
-                        "|Q3 Hits: " + String(quadrantHits[2]) + "|Q4 Hits: " + String(quadrantHits[3]);
+    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + ",Q2 Hits: " + String(quadrantHits[1]) +
+                        ",Q3 Hits: " + String(quadrantHits[2]) + ",Q4 Hits: " + String(quadrantHits[3]);
 
     Serial.println(hitSummary);
-    // TODO: send `hitSummary` over BLE characteristic
+    
+    // Send hit summary over BLE characteristic
+    static char hitArray[100];
+    hitSummary.toCharArray(hitArray, 100);
+
+    hitSummaryChar->setValue(hitArray);
+    hitSummaryChar->notify();
   }
 }
 
 // Update seven segment displays
-void updateSevenSegmentDisplays(int score) {
-  int tens = score / 10;
-  int units = score % 10;
-  displayDigit(tens, segPins1);   // left digit
-  displayDigit(units, segPins2);  // right digit
+void updateSevenSegmentDisplays(int playerScore, int opponentScore) {
+  displayDigit(playerScore, segPins1);   // left digit
+  displayDigit(opponentScore, segPins2);  // right digit
 }
 
 // Clear seven segment displays
@@ -762,3 +859,4 @@ void displayDigit(int digit, int segPins[]) {
     digitalWrite(segPins[i], digitSegments[digit][i] ? LOW : HIGH);
   }
 }
+
