@@ -505,6 +505,8 @@ class BleFunctionality{
   late StreamSubscription<ConnectionStateUpdate> connection;
   DiscoveredDevice? connectedDevice;
 
+  final ValueNotifier<String?> latestData = ValueNotifier(null);
+
   BleFunctionality();
 
   Future<bool> requestPermissions() async {
@@ -570,8 +572,8 @@ class BleFunctionality{
     required DiscoveredDevice connectedDevice,
     required Uuid serviceUuid,
     required Uuid characteristicUuid,
-    required Function(String) onData,
-    required Function(String) onError,
+    // required Function(String) onData,
+    // required Function(String) onError,
   }){
 
     print("in readLiveFromDevice");
@@ -583,9 +585,16 @@ class BleFunctionality{
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); // or interpret as bytes
       print("Received from BLE: $value");
+      latestData.value = value;
     }, onError: (error) {
+      latestData.value = null;
       print("Error subscribing to notifications: $error");
     });
+  }
+
+  void stopScan() {
+    scanSubscription.cancel();
+    print("Scan stopped");
   }
 }
 
@@ -908,9 +917,8 @@ class GamePage extends StatefulWidget{
 class _GamePageState extends State<GamePage> {
   var game = Game();
   bool isLoading = true;
-  final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
-  final characteristicUuid = Uuid.parse("c8e62f4c-a675-48a6-896a-3d2ec5e48075"); //TODO change from temp to button press
   final internetConnection = ConnectivityCheck();
+  late VoidCallback _bleDataListener;
 
 
   void loadOpponent(){
@@ -1073,37 +1081,40 @@ class _GamePageState extends State<GamePage> {
   }
 
 
+  @override
+  void dispose() {
+    myBLE.latestData.removeListener(_bleDataListener);
+    super.dispose();
+  }
+
 
   @override
   void initState() {
     super.initState();
     loadOpponent();
 
+    print("init game page");
+    _bleDataListener = () {
+      if (!mounted) return;
+      final data = myBLE.latestData.value;
+      if (data != null) {
+        setState(() {
+          print("New data in GamePage: $data");
+          game.myScore = int.tryParse(data.trim()) ?? 0;
+        });
+      } else {
+        setState(() {
+          game.myScore = -1;
+        });
+      }
+    };
+
+    myBLE.latestData.addListener(_bleDataListener);
+
     internetConnection.connectionRestoreListener((){
       print("Internet connection restored. Sending cached games");
       sendCachedGames();
     });
-
-    if(myBLE.connectedDevice != null){
-      DiscoveredDevice device = myBLE.connectedDevice!;
-
-      //TODO FIGURE OUT DATA FORMATTING
-      myBLE.readLiveFromDevice(
-        connectedDevice: device,
-        serviceUuid: serviceUuid,
-        characteristicUuid: characteristicUuid,
-        onData: (data) {
-          setState(() {
-            game.myScore = int.tryParse(data) ?? 0;
-          });
-        },
-        onError: (error) {
-          setState(() {
-            game.myScore = -1;
-          });
-        },
-      );
-    }
 
   }
 
@@ -1737,32 +1748,38 @@ class ProfilePage extends StatefulWidget{
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  bool isConnected = false;
+  // bool isConnected = false;
   final internetConnection = ConnectivityCheck();
+  final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+  final characteristicUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495"); //TODO change from temp to button press
 
   void scan(){
     myBLE.startScan(onDeviceDiscovered: (device) {
       setState(() {}); // Trigger rebuild; myBLE.devices is already updated
     });
+    print("scan pressed");
   }
 
   void connect(DiscoveredDevice device){
     print("Pressed");
     myBLE.connectDevice(device, (bool status) {
       if(!mounted) return;
-      setState(() {
-        isConnected = status;
-      });
+      // setState(() {
+      //   isConnected = status;
+      // });
 
       print("Connection status updated: $status");
 
       if(status){
-        Navigator.pushNamed(context, '/game');
+        myBLE.readLiveFromDevice(
+          connectedDevice: device,
+          serviceUuid: serviceUuid,
+          characteristicUuid: characteristicUuid,
+        );
+
       }
       else{
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("BLE connection failed")),
-        );
+        print("Ble connection failed");
       }
     });
 
@@ -1772,9 +1789,16 @@ class _ProfilePageState extends State<ProfilePage> {
     Provider.of<User>(context, listen: false).resetUser();
   }
 
+
   void initState() {
     super.initState();
     scan();
+  }
+
+  @override
+  void dispose() {
+    myBLE.stopScan(); // You should add this in your BLE manager
+    super.dispose();
   }
 
   @override
