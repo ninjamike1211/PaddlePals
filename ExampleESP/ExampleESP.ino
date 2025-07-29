@@ -8,7 +8,15 @@
 // Credit to Robin2 for help with parsing serial input:
 // https://forum.arduino.cc/t/serial-input-basics/278284/2
 
+// Credit to Adafruit and Random Nerd Tutorials for demo regarding MPU6050 accelerometer:
+// https://randomnerdtutorials.com/esp32-mpu-6050-accelerometer-gyroscope-arduino/
+
+// NOTE - NEED TO ADD INTERRUPT() FOR SWING SPEED!
+
 #include "BluetoothSerial.h"
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
 
 String device_name = "ESP32-BT";
 
@@ -16,6 +24,8 @@ String device_name = "ESP32-BT";
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
+
+Adafruit_MPU6050 mpu;
 
 BluetoothSerial SerialBT;
 
@@ -26,14 +36,19 @@ int pointsThisGame = 0;
 int totalPointsAllTime = 0;
 
 // Variable to store the current max swing speed from Current Game
-int currentMaxSwingSpeed = 0;
+float currentMaxSwingSpeed = 0.0;
 
 // Timer variables
 // Stores last time temperature was published
 unsigned long previousMillis = 0;    
 
 // Time interval at which to publish data
-const long interval = 5000;  
+const long interval = 1000;  
+
+// Stores the start and ending times for transmissions via bluetooth, as well as the latency from the two
+unsigned long startTransmissionTime;
+unsigned long endTransmissionTime;
+unsigned long latency;
 
 // String variables for sent and received messages
 String entireMessageFromPhone = "";
@@ -44,8 +59,8 @@ int valueFromPhone = 0;
 String pointsString = "";
 String newSwingString = "";
 String maxSwingString = "";
-String allTimePointsString = "";
-String avgPointsPerGameString = "";
+String currentTemperature = "";
+String latencyString = "";
 bool messageFinishedSending = false;
 
 
@@ -60,6 +75,78 @@ void setup() {
 
   // Print that serial connection has been established
   Serial.printf("The device with name \"%s\" is started.\nNow you can pair it with Bluetooth!\n", device_name.c_str());
+
+  // Setup Accelerometer
+  // Initialization
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
+    break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
+
+  Serial.println("");
+  delay(100);
 }
 
 // Switch behavior so it sends statistics over time
@@ -78,8 +165,10 @@ void loop() {
   // If the interval has passed, get and send data to phone
   if (currentMillis - previousMillis >= interval) {
       previousMillis = currentMillis;
-      // Generate random swing speed value
-      int randSwingSpeed = random(0, 50);
+
+      // Get info from the accelerometer
+      sensors_event_t a, g, temp;
+      mpu.getEvent(&a, &g, &temp);
 
       // Generate value from 0 to 100 for probability
       int randProbability = random(0, 100);
@@ -90,47 +179,70 @@ void loop() {
         incrementPoints();
       }
 
+      // Get the newest swing speed
+      float newSwingSpeed = calculateSwingSpeed(g.gyro.x, g.gyro.y, g.gyro.z);
+
       // Check the max swing speed
-      int currentMax = checkMaxSwingSpeed(randSwingSpeed);
+      float currentMax = checkMaxSwingSpeed(newSwingSpeed);
 
       // Send stats over in string format
       pointsString = "Current Number Of Points By This Player: " + String(pointsThisGame);
-      newSwingString = "Newest Swing Speed: " + String(randSwingSpeed);
-      maxSwingString = "Max Swing Speed: " + String(currentMax);
-
-      // Send some test strings for Total Points All Time and Average Points Per Game
-      totalPointsAllTime = calculateTotalPointsAllTime(50);
-      allTimePointsString = "Example All Time Points: " + String(totalPointsAllTime);
-
-      float averagePPG = calculateAveragePointsPerGame(20, totalPointsAllTime);
-      avgPointsPerGameString = "Example Average PPG: " + String(averagePPG);
-
+      newSwingString = "Newest Swing Speed: " + String(newSwingSpeed) + " m/s";
+      maxSwingString = "Max Swing Speed: " + String(currentMax) + " m/s";
+      currentTemperature = "Current Temperature: " + String(temp.temperature) + " Celsius";
       
+      // After calculations, start the transmission timer
+      // Note - this can overflow after 70 min of arduino runtime - might need to fix later
+
+      startTransmissionTime = micros();
+
       SerialBT.println(pointsString);
       SerialBT.println(newSwingString);
       SerialBT.println(maxSwingString);
-      SerialBT.println(allTimePointsString);
-      SerialBT.println(avgPointsPerGameString);
+      SerialBT.println(currentTemperature);
+
+      endTransmissionTime = micros();
+      latency = endTransmissionTime - startTransmissionTime;
+
+      // Turn latency into a string and send
+      latencyString = "Latency: " + String(latency) + " microseconds";
+
+      SerialBT.println(latencyString);
+
+      // Print an empty line to seperate data
+      SerialBT.println();
   }
 
   // Check for received messages from phone
   if (SerialBT.available()) {
-    Serial.write(SerialBT.read());
-  }
+    // Get incoming chars and append to string
+    char charFromPhone = SerialBT.read();
 
-  // Delay for a little bit to avoid overlap - 20 ms
-  delay(20);
+    // Keep reading in chars into message unless new line is hit, in which case, clear the message
+    if (charFromPhone != '\n') {
+      entireMessageFromPhone += String(charFromPhone);
+    }
+    else {
+      // Clear the message
+      entireMessageFromPhone = "";
+
+      // Indicate that the message finished sending
+      messageFinishedSending = true;
+    }
+
+    // Write the chars to serial
+    Serial.write(charFromPhone);
+  }
 }
 
 
 // Functions for algorithms and operations
-// Some examples here
 
 void incrementPoints() {
   pointsThisGame++;
 }
 
-int checkMaxSwingSpeed(int swingSpeed) {
+float checkMaxSwingSpeed(float swingSpeed) {
   if (swingSpeed > currentMaxSwingSpeed) {
     currentMaxSwingSpeed = swingSpeed;
   }
@@ -154,65 +266,7 @@ float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) 
   return averagePoints;
 }
 
-/* Old Code for reading data in from phone
-// Check for received messages from phone
-  if (SerialBT.available()) {
-    // Get incoming chars and append to string
-    char charFromPhone = SerialBT.read();
-
-    // Keep reading in chars into message unless new line is hit, in which case, clear the message
-    if (charFromPhone != '\n') {
-      entireMessageFromPhone += String(charFromPhone);
-    }
-    else {
-      // Clear the message
-      entireMessageFromPhone = "";
-
-      // Indicate that the message finished sending
-      messageFinishedSending = true;
-    }
-
-    // Write the chars to serial
-    Serial.write(charFromPhone);
-  }
-
-  if (messageFinishedSending) {
-      // Convert message to char array and put string in it
-      char charBuffer[entireMessageFromPhone.length() + 1];
-      entireMessageFromPhone.toCharArray(charBuffer, entireMessageFromPhone.length() + 1);
-
-      // Parse the string
-      parseStringForValues(charBuffer);
-
-      String messageSentBack = "";
-
-      // Check the variable from phone, respond accordingly
-      if (variableFromPhone == "past_total") {
-        totalPointsAllTime = calculateTotalPointsAllTime(valueFromPhone);
-        messageSentBack = "Total Points All Time: " + String(totalPointsAllTime);
-      }
-      else if (variableFromPhone == "num_of_past_games") {
-        // Add 1 since we are including the current game
-        float averagePointsPerGame = calculateAveragePointsPerGame(valueFromPhone + 1, totalPointsAllTime);
-        messageSentBack = "Average Points per Game: " + String(averagePointsPerGame);
-      }
-      else if (variableFromPhone == "past_max_swing_speed") {
-          if (checkAllTimeSwingSpeed(valueFromPhone)) {
-            messageSentBack = "New Max Swing Speed: " + String(currentMaxSwingSpeed);
-          }
-          else {
-            messageSentBack = "Sorry, no new record.";
-          }
-      }
-
-      // Send the message back through SerialBT
-      SerialBT.println(messageSentBack);
-
-      // Mark message finished sending as false
-      messageFinishedSending = false;
-  }*/
-
-/* void parseStringForValues(char charBufferMessage[]) {
+void parseStringForValues(char charBufferMessage[]) {
   // Split string into parts
 
   // Create char pointer for strtok() to use as index
@@ -232,5 +286,17 @@ float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) 
 
   // Convert string to int and copy it
   valueFromPhone = atoi(strtokIndx);
+}
 
-}*/
+float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity) {
+  // Assume "r" - or the distance to the rotation center - is 10 cm.
+  float r = 0.10;
+
+  // Calculate magnitude of the total angular velocity
+  float angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
+
+  // Calculate final swing speed
+  float finalSwingSpeed = angVelocity * r;
+
+  return finalSwingSpeed;
+}
