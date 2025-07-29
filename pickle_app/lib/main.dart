@@ -11,55 +11,65 @@ import 'package:path_provider/path_provider.dart';
 
 
 void main() async{
+  //Hive local caching inits
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('cacheBox'); // Open a box for caching
+  await Hive.openBox('cacheBox'); //box where cached data will be stored
 
+  //init a global user, any widgets using it will be notified on change
   runApp(ChangeNotifierProvider(
     create: (context) => User(username: "", gamesPlayed: 0, gamesWon: 0, avgScore: 0),
     child: MyApp(),));
 }
 
 
-/*
-CLASS FOR ALL API REQUESTS
- */
+///class holding all api requests to database
+///generally only do communication, no data manipulation
 class APIRequests {
+  //current laptop IP address, change manually
   final String url = "http://10.0.0.188:80";
 
-  //GET REQUEST
+  ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
-    //"/pickle/user/get?user_id=1"
+    //* all api calls follow this general setup
+
+    //make a map with the param name from rest_api.md and the flutter value it should be assigned
     Map<String, int> u_id = {
       'user_id': id_num,
     };
 
     print(u_id);
+    //the endpoint for the api to call in rest_api.md
     String endpoint = "/pickle/user/get";
     print("$endpoint");
     //NOTE Authorization header for authorization api (look up standard authorization header, Bearer)
 
+    //create the response using http.post
     final response = await http.post(
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
       },
       body: json.encode(u_id)).timeout(const Duration(seconds:10));
+
     print('Status ${response.statusCode}');
 
     print("Sent JSON: ${jsonEncode(u_id)}");
     print("Status: ${response.statusCode}");
     print("Body: ${response.body}");
 
+    //check for a successful response
     if (response.statusCode == 200 || response.statusCode == 201){
-
+      //if the response is successful return a Map<String, dynamic> in the returns format from rest_api.md
       return json.decode(response.body);
     }
     else{
+      //if the response is not successful view a message with status code and the body that caused the error
       throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
     }
   }
 
+  ///create a new user in the database with given username and password
   Future<Map<String, dynamic>> postNewUserRequest(String un, String pw) async {
     print(un);
     print(pw);
@@ -92,6 +102,8 @@ class APIRequests {
       throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
     }
   }
+
+  ///get the user id number of a user given their username, useful for other calls
   Future<Map<String, dynamic>> getUserID(String un) async {
     print(un);
     Map<String, String> userToSearch = {
@@ -122,6 +134,7 @@ class APIRequests {
     }
   }
 
+  ///get all of a user's friends indexed by id number - includes username, gamesPlayed, and winRate in returned map
   Future<Map<String, dynamic>> getFriends(String un) async {
     print(un);
 
@@ -162,6 +175,7 @@ class APIRequests {
     }
   }
 
+  ///add a friend for a user to the database given both users' usernames
   Future<Map<String, dynamic>> addFriend(String un, String friendUN) async {
     print(un);
 
@@ -202,6 +216,7 @@ class APIRequests {
     }
   }
 
+  ///confirm a user can login, return an apiKey for future use when running with authorization
   Future<String> authorizeLogin(String un, String pw) async {
     print("Username: $un");
     print("Password: $pw");
@@ -237,6 +252,7 @@ class APIRequests {
     return "";
   }
 
+  ///save a completed game to the database
   Future<Map<String, dynamic>> registerGame(int timestamp, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async{
     Map<String, dynamic> winner_id = await getUserID(winnerName);
     final int winner_id_num = winner_id[winnerName];
@@ -279,6 +295,8 @@ class APIRequests {
     }
   }
 
+  ///get a list of game id numbers the given user has participated in
+  //TODO add sorting options (should just need add parameter, adjust params accordingly)
   Future<Map<String, dynamic>> getUsersGames(String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
@@ -313,6 +331,7 @@ class APIRequests {
     }
   }
 
+  ///get the timestamp, game type, winner id, loser id, winner points, loser points corresponding to a game id number
   Future<Map<String, dynamic>> getGameInfo(int gameID) async {
     Map<String, dynamic> params = {
       'game_id': gameID
@@ -344,6 +363,7 @@ class APIRequests {
     }
   }
 
+  ///get a variety of swing and git information for a user from a specified game
   Future<Map<String, dynamic>> getGameStats(int gameID, String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
@@ -379,6 +399,7 @@ class APIRequests {
     }
   }
 
+  ///get the username from a user's id number
   Future<Map<String, dynamic>> getUsername(int userId) async {
 
     Map<String, dynamic> params = {
@@ -415,13 +436,13 @@ class APIRequests {
 
 }
 
+//create a global singleton instance of the APIRequests class
 final api = APIRequests();
 
+///this class holds user information that is needed throughout the app
+///when any values are changed all User widgets are notified
 class User extends ChangeNotifier {
-  // final int userId;
   String username;
-  // final String passwordHash;
-  // final int valid;
   int gamesPlayed;
   int gamesWon;
   double avgScore;
@@ -437,6 +458,7 @@ class User extends ChangeNotifier {
     this.opponent = ""
   });
 
+  //***these json conversions should not be used
   factory User.fromJson(Map<String, dynamic> json){
     return User(
         username: json['username'],
@@ -445,7 +467,6 @@ class User extends ChangeNotifier {
         avgScore: json['averageScore']
     );
   }
-
   Map<String, dynamic> toJson() => {
     'username': username,
     'gamesPlayed': gamesPlayed,
@@ -453,6 +474,7 @@ class User extends ChangeNotifier {
     'averageScore': avgScore
   };
 
+  ///update the global user to represent the specified user from the database
   Future<void> updateUserfromDatabase(String newUserName) async{
 
     newUserName = newUserName.trim();
@@ -487,6 +509,7 @@ class User extends ChangeNotifier {
     notifyListeners();
   }
 
+  ///reset the global user to "blank" values
   void resetUser(){
     username = "";
     gamesPlayed = 0;
@@ -497,18 +520,21 @@ class User extends ChangeNotifier {
   }
 }
 
+///class holding functions and values for BLE connection
 class BleFunctionality{
 
-  final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle();
-  final List<DiscoveredDevice> devices = [];
+  final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle(); //instantiate flutter ble class
+  final List<DiscoveredDevice> devices = []; //devices found in scan
   late StreamSubscription<DiscoveredDevice> scanSubscription;
-  late StreamSubscription<ConnectionStateUpdate> connection;
-  DiscoveredDevice? connectedDevice;
+  late StreamSubscription<ConnectionStateUpdate> connection; //the established ble connection
+  DiscoveredDevice? connectedDevice; //device that was connected to
 
+  //notify the game page when new data is received
   final ValueNotifier<String?> latestData = ValueNotifier(null);
 
   BleFunctionality();
 
+  ///get the needed permissions for ble functionality on android
   Future<bool> requestPermissions() async {
     final status = await [
       Permission.location,
@@ -519,16 +545,19 @@ class BleFunctionality{
     return status.values.every((s) => s.isGranted);
   }
 
+  ///scan for ble devices when permissions are granted
   Future<void> startScan({required void Function(DiscoveredDevice) onDeviceDiscovered}) async {
+    //wait for permissions to be granted
     bool granted = await requestPermissions();
     if(granted) {
+      //listen for ready ble devices
       flutterReactiveBle.statusStream.listen((status) {
         if (status == BleStatus.ready) {
           print("Ready for BLE discovery");
           scanSubscription = flutterReactiveBle
               .scanForDevices(withServices: <Uuid>[])
               .listen((device) {
-            // Add to list if not already present
+            //add device if not already in list
             final known = devices.any((d) => d.id == device.id);
             if (!known) {
               devices.add(device);
@@ -548,17 +577,21 @@ class BleFunctionality{
     }
   }
 
+  ///connect to the selected ble status
   Future<void> connectDevice(DiscoveredDevice selectedDevice, void Function(bool) connectionStatus) async {
+    //try connecting to the device
     connection = flutterReactiveBle.connectToDevice(id: selectedDevice.id).listen((connectionState) {
       print("Connection State for device ${selectedDevice
           .name} : ${connectionState.connectionState}");
       if (connectionState.connectionState == DeviceConnectionState.connected) {
+        //on a connection call callback with true, set connected device
         connectionStatus(true);
         connectedDevice = selectedDevice;
         print("connected");
       }
       else if (connectionState.connectionState ==
           DeviceConnectionState.disconnected) {
+        //on a connection call callback with false, no connected device
         connectionStatus(false);
         connectedDevice = null;
         print("disconnected");
@@ -568,12 +601,12 @@ class BleFunctionality{
     });
   }
 
+  ///subscribe to characteristic with a connected device and necessary uuids
+  //TODO edit for use with other characteristics, likely make two other functions
   void readLiveFromDevice({
     required DiscoveredDevice connectedDevice,
     required Uuid serviceUuid,
     required Uuid characteristicUuid,
-    // required Function(String) onData,
-    // required Function(String) onError,
   }){
 
     print("in readLiveFromDevice");
@@ -583,23 +616,26 @@ class BleFunctionality{
         deviceId: connectedDevice.id);
 
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
-      final value = utf8.decode(data); // or interpret as bytes
+      final value = utf8.decode(data); //get decoded value
       print("Received from BLE: $value");
-      latestData.value = value;
+      latestData.value = value; //update latestData value
     }, onError: (error) {
       latestData.value = null;
       print("Error subscribing to notifications: $error");
     });
   }
 
+  ///stop scanning when leaving profile page
   void stopScan() {
     scanSubscription.cancel();
     print("Scan stopped");
   }
 }
 
+//create a global singleton instance of the BLE class
 final myBLE = BleFunctionality();
 
+///class holding values and functions for games
 class Game {
   bool inProgress = false;
   bool isFinished = false;
@@ -619,6 +655,7 @@ class Game {
     opponentScore += 1;
   }
 
+  ///true if a player has a score of at least 11 and is winning by at least 2
   bool checkForWinner(){
     if (myScore >= 11 && opponentScore <= myScore - 2){
       inProgress = false;
@@ -636,6 +673,7 @@ class Game {
     }
   }
 
+  ///if there is a winner, the player with the higher score is the winner
   String getWinner(){
     if (checkForWinner()){
       if (myScore > opponentScore) {
@@ -667,6 +705,8 @@ class Game {
     winner = "";
   }
 
+  ///convert the String gameType to a int value
+  //TODO add other game types
   int gameTypeToInt(){
     if (gameType == "Standard"){
       return 0;
@@ -679,16 +719,20 @@ class Game {
 
 }
 
+///class to check for network connection
 class ConnectivityCheck {
+  //only allow for one instance
   static final ConnectivityCheck _instance = ConnectivityCheck._internal();
   factory ConnectivityCheck() => _instance;
   ConnectivityCheck._internal(){
     _init();
   }
 
+  //init library
   final _connectivity = Connectivity();
   final ValueNotifier<bool> isOnline = ValueNotifier(true);
 
+  ///get initial connection and double check
   void _init() async{
     await _checkInitStatus();
 
@@ -699,6 +743,7 @@ class ConnectivityCheck {
 
   }
 
+  ///get initial connection status
   Future<void> _checkInitStatus() async {
     final result = await _connectivity.checkConnectivity();
     final online = !result.contains(ConnectivityResult.none);
@@ -711,7 +756,7 @@ class ConnectivityCheck {
     });
   }
 
-  //listen for a restored connection, then send previously cached data to database
+  ///listen for a restored connection, then send previously cached data to database
   void connectionRestoreListener(VoidCallback sendCachedData){
     //check previous connection state
     bool wasOffline = !isOnline.value;
@@ -728,16 +773,19 @@ class ConnectivityCheck {
   }
 }
 
-
+///widget for logging in
+///TODO Rename
 class MyTextEntryWidget extends StatefulWidget {
   @override
   _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
 }
 
 class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
+  //controller variables describing the text entries
   final TextEditingController _controller1 = TextEditingController();
   final TextEditingController _controller2 = TextEditingController();
 
+  //TODO add back create user on login page
   _createNewUser(String userName, String password) {
     // final newUser = User(
     //   username: newName,
@@ -751,6 +799,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
     api.postNewUserRequest(userName, password);
   }
 
+  ///check for valid username and password with database then go to home
   _login(String userName, String password) async {
     String apiKey = await api.authorizeLogin(userName, password);
 
@@ -769,7 +818,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
       child: Column(
         children: [
           TextField(
-            controller: _controller1,
+            controller: _controller1, //username entry is controlled by controller1
             decoration: InputDecoration(
               labelText: 'Enter username',
               border: OutlineInputBorder(),
@@ -779,7 +828,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
             height: 16,
           ),
           TextField(
-            controller: _controller2,
+            controller: _controller2, //password is controlled by controller2
             decoration: InputDecoration(
               labelText: 'Enter password',
               border: OutlineInputBorder(),
@@ -798,8 +847,7 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
   }
 }
 
-
-//User will probably be an app state
+///Top level widget
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -808,8 +856,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  // This widget is the root of your application.
-  //User currentUser = User(username: "", gamesPlayed: 0, gamesWon: 0, avgScore: 0);
 
   @override
   Widget build(BuildContext context) {
@@ -820,7 +866,7 @@ class _MyAppState extends State<MyApp> {
         scaffoldBackgroundColor: Colors.white,
       ),
       initialRoute: '/', // Start at Login
-      routes: {
+      routes: { //used for forcing navigation without nav bar
         '/': (context) => LoginPage(),
         '/home': (context) => MyHomePage(),
         '/game': (context) => GamePage(),
@@ -829,6 +875,7 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+///Holds all pages except Login and navigation between them
 class MyHomePage extends StatefulWidget {
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -836,6 +883,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
 
+  //page selected in nav bar
   var selectedIndex = 0;
 
 
@@ -907,6 +955,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
+///Page where game can be viewed/played
 class GamePage extends StatefulWidget{
   const GamePage({super.key});
 
@@ -917,10 +966,10 @@ class GamePage extends StatefulWidget{
 class _GamePageState extends State<GamePage> {
   var game = Game();
   bool isLoading = true;
-  final internetConnection = ConnectivityCheck();
-  late VoidCallback _bleDataListener;
+  final internetConnection = ConnectivityCheck(); //check for internet connection
+  late VoidCallback _bleDataListener; //function for receiving new data from ble
 
-
+  ///check if the user has inputted an opponent and update game
   void loadOpponent(){
     if(context.read<User>().opponent != ""){
       game.opponentName = context.read<User>().opponent;
@@ -934,7 +983,7 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
-
+  ///check game status to determine how the page title should appear
   String getTitle(){
     String title = "";
     if (game.inProgress){
@@ -950,6 +999,7 @@ class _GamePageState extends State<GamePage> {
     return title;
   }
 
+  ///mark that game has started
   void startStandardGame(){
     setState(() {
       game.startGame();
@@ -957,6 +1007,7 @@ class _GamePageState extends State<GamePage> {
     print("game started");
   }
 
+  ///check internet connection to show and how game will be saved
   String showWinnerContent(String winnerName) {
     if(internetConnection.isOnline.value == true){
       return "$winnerName is the winner!";
@@ -965,6 +1016,8 @@ class _GamePageState extends State<GamePage> {
       return "$winnerName is the winner!\nData will be saved locally until connection is restored";
     }
   }
+
+  ///display a popup with the winner, game save message, and save/restart button
   void showWinner(String winnerName){
     showDialog(
         context: context,
@@ -1007,11 +1060,12 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  ///save finished game data to Hive box
   Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async {
     Map<String, dynamic> gameToSave = {
       'timestamp': startTime,
       'game_type': gameTypeNum,
-      'winner_name': winnerName, //NEED TO BE CONVERTED TO ID BEFORE SENDING TO DATABASE
+      'winner_name': winnerName,
       'loser_name': loserName,
       'winner_points': winnerPoints,
       'loser_points': loserPoints
@@ -1022,6 +1076,7 @@ class _GamePageState extends State<GamePage> {
 
   }
 
+  ///open the Hive box and register each game in the queue to the database
   void sendCachedGames() async {
     final cacheBox = await Hive.openBox("gameQueue");
     final cacheBoxKeys = cacheBox.keys.toList();
@@ -1033,6 +1088,7 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  ///format game info for saving, cache or register to database, reset game
   void saveAndRestartGame(){
     int gameTypeNum = game.gameTypeToInt();
 
@@ -1081,19 +1137,21 @@ class _GamePageState extends State<GamePage> {
   }
 
 
+  ///handle exiting page
   @override
   void dispose() {
     myBLE.latestData.removeListener(_bleDataListener);
     super.dispose();
   }
 
-
+  ///when the page is first built, or rebuilt for listener
   @override
   void initState() {
     super.initState();
-    loadOpponent();
+    loadOpponent(); //get opponent name
 
     print("init game page");
+    //listen for a new ble data value, update game and ui
     _bleDataListener = () {
       if (!mounted) return;
       final data = myBLE.latestData.value;
@@ -1109,8 +1167,10 @@ class _GamePageState extends State<GamePage> {
       }
     };
 
+    //use the listener function to handle new ble data
     myBLE.latestData.addListener(_bleDataListener);
 
+    //when internet connection is restored, immediately send cached games to database
     internetConnection.connectionRestoreListener((){
       print("Internet connection restored. Sending cached games");
       sendCachedGames();
@@ -1132,7 +1192,7 @@ class _GamePageState extends State<GamePage> {
           ValueListenableBuilder(
               valueListenable: internetConnection.isOnline,
               builder: (context, online, _){
-                // print("Game Page Connectivity: $online");
+                //dont show message unless offline
                 return online ? Text("") : Text("Offline");
               }
           ),
@@ -1145,7 +1205,7 @@ class _GamePageState extends State<GamePage> {
                     fontSize: 24
                 ),
               ),
-              SizedBox(width: 70,), //,may need to make spacing variable depending opponentName
+              SizedBox(width: 70,), //TODO fix spacing to handle long opponent names
               Text(
                 game.opponentName,
                 style: TextStyle(
@@ -1216,6 +1276,7 @@ class _GamePageState extends State<GamePage> {
   }
 }
 
+///Page to view and interact with friends
 class SocialPage extends StatefulWidget{
   const SocialPage({super.key});
 
@@ -1224,17 +1285,21 @@ class SocialPage extends StatefulWidget{
 }
 
 class _SocialPageState extends State<SocialPage> {
-
+  //controller for friend username text entry
   final TextEditingController _controller = TextEditingController();
   bool isLoading = true;
+  //check for internet connection
   final internetConnection = ConnectivityCheck();
 
+  ///everytime the page is built
   @override
   void initState() {
     super.initState();
+    //refresh user info
     loadUser();
   }
 
+  ///refresh user everytime the page is built to keep friends updated
   Future<void> loadUser() async {
     final username = context.read<User>().username;
     await context.read<User>().updateUserfromDatabase(username);
@@ -1243,6 +1308,7 @@ class _SocialPageState extends State<SocialPage> {
     });
   }
 
+  ///testing function to print all friend names of a user
   Future<void> showFriends(String username) async{
     try{
       var friends = await api.getFriends(username);
@@ -1253,6 +1319,7 @@ class _SocialPageState extends State<SocialPage> {
     }
   }
 
+  ///add a friend for a user and update that user
   Future<void> addFriend(String username, String friendUsername) async{
     try{
       var success = await api.addFriend(username, friendUsername.trim());
@@ -1273,11 +1340,13 @@ class _SocialPageState extends State<SocialPage> {
     print("Delete button $palName");
   }
 
+  ///give a friend as an opponent and update user
   void startGameWithPal(String palName){
       print("Start game with $palName");
       context.read<User>().setOpponent(palName);
   }
 
+  ///show a popup to start a game with a friend, delete a friend, or cancel
   void showOptions(String palName){
     showDialog(
         context: context,
@@ -1325,7 +1394,7 @@ class _SocialPageState extends State<SocialPage> {
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
-                  // print("Game Page Connectivity: $online");
+                  //only show message when offline
                   return online ? Text("") : Text("Offline");
                 }
             ),
@@ -1347,7 +1416,7 @@ class _SocialPageState extends State<SocialPage> {
                 child: Text("Add Friend")
             ),
             Expanded(
-              child: ListView.builder(
+              child: ListView.builder( //list of a user's friends and their info
                   itemCount: user.pals.length,
                   itemBuilder: (context, index) {
                     final pal = user.pals[index];
@@ -1367,6 +1436,7 @@ class _SocialPageState extends State<SocialPage> {
   }
 }
 
+///page to view history of a selected stat in a list
 class HistoryPage extends StatefulWidget{
   const HistoryPage({super.key});
 
@@ -1375,11 +1445,17 @@ class HistoryPage extends StatefulWidget{
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  //options in dropdown
   List<String> statsToView = ["Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
+  //option selected in dropdown
   String? selectedStat;
+  //list of retrieved game ids
   List<int>? gameIds;
+  //list of game ids resulting in wins
   List<int>? winIds;
+  //list of games ids resulting in losses
   List<int>? lossIds;
+  //check for internet connection
   final internetConnection = ConnectivityCheck();
 
   @override
@@ -1389,15 +1465,16 @@ class _HistoryPageState extends State<HistoryPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => loadGamesHistory());
   }
 
+  ///get all the games of the logged in user from database
   Future<void> loadGamesHistory() async {
     final currentUsername = context.read<User>().username;
     final data = await api.getUsersGames(currentUsername);
 
+    //save the game ids as a list of ints
     List<dynamic> gameIdDynamic = data['game_ids'] ?? [];
-    print("Raw gameIdDynamic: $gameIdDynamic");
-    print("Types: ${gameIdDynamic.map((e) => e.runtimeType).toList()}");
     List<int> gameIdNums = gameIdDynamic.cast<int>();
 
+    //check the widget is mounted before saving state
     if (mounted) {
       setState(() {
         gameIds = gameIdNums;
@@ -1405,85 +1482,112 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
+  ///loop through game ids to check for wins for history list
   Future<List<Map<String, dynamic>>> getWins(String username) async {
     List<Map<String, dynamic>> winsList = [];
     List<int> tempWinIds = [];
 
     if (gameIds != null){
+      //game ids is not empty, so temp is equal to game ids, if error blank list
       List<int> tempIds = gameIds ?? [];
+      //loop through each game
       for (var game in tempIds){
+          //get the game information
           Map<String, dynamic> gameMap = await api.getGameInfo(game);
           print(gameMap);
           String gameIdString = game.toString();
+          //use the winner id to find the username of the winner
           var winnerId = gameMap[gameIdString]?["winner_id"];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
           String winnerIdString =  winnerId.toString();
           String winnerName = winnerMap[winnerIdString]['username'];
+          //check if the user is the winner
           if (winnerName == username){
+            //the user is the winner so save id
             tempWinIds.add(game);
+            //get the loser id and username
             int loserID = gameMap[gameIdString]['loser_id'];
             Map<String, dynamic> loserMap = await api.getUsername(loserID);
             String loserIdString = loserID.toString();
             String loserName = loserMap[loserIdString]['username'];
+            //change loser id locally to be better for ui
             gameMap['loser_id'] = loserName;
+            //add date_time to format unix timestamp better for ui
             gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
             winsList.add(gameMap);
           }
       }
     }
-    // print(winsList);
+    //set winIds
     winIds = tempWinIds;
     return winsList;
   }
 
+  ///loop through game ids to check for losses for history list
   Future<List<Map<String, dynamic>>> getLosses(String username) async {
     List<Map<String, dynamic>> lossesList = [];
     List<int> tempLossIds = [];
 
     if (gameIds != null){
+      //game ids is not empty, so temp is equal to game ids, if error blank list
       List<int> tempIds = gameIds ?? [];
+      //loop through games
       for (var game in tempIds){
+        //get the game information
         Map<String, dynamic> gameMap = await api.getGameInfo(game);
         String gameIdString = game.toString();
+        //user the loser id to get the loser name
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString =  loserId.toString();
         String loserName = loserMap[loserIdString]['username'];
+        //check if user is the loser
         if (loserName == username){
+          //user is the loser so add game to list of loss ids
           tempLossIds.add(game);
+          //user winner id to get winner name
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
           String winnerName = winnerMap[winnerIdString]['username'];
+          //replace winner id with winner name locally to better suit ui
           gameMap['winner_id'] = winnerName;
+          //add date_time to format unix timestamp better for ui
           gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
           lossesList.add(gameMap);
         }
       }
     }
-    // print(winsList);
+
+
     lossIds = tempLossIds;
     return lossesList;
   }
 
+  ///loop through games to find opponent names for history list
   Future<List<Map<String, dynamic>>> getOpponents(String username) async {
     List<Map<String, dynamic>> opponentsMaps = [];
 
     if (gameIds != null) {
       List<int> tempIds = gameIds ?? [];
+      //loop through games
       for (var game in tempIds) {
+        //get game info
         Map<String, dynamic> gameMap = await api.getGameInfo(game);
         String gameIdString = game.toString();
+        //use loser id to get loser name
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString = loserId.toString();
         String loserName = loserMap[loserIdString]['username'];
         //user loses
         if (loserName == username) {
+          //use winner id to get opponent name
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
           String winnerName = winnerMap[winnerIdString]['username'];
+          //update game map to better display info
           gameMap['opponent_name'] = winnerName;
           gameMap['my_points'] =  gameMap[gameIdString]['loser_points'];
           gameMap['opp_points'] = gameMap[gameIdString]['winner_points'];
@@ -1492,6 +1596,8 @@ class _HistoryPageState extends State<HistoryPage> {
         }
         //user wins
         else{
+          //opponent name is already known
+          //update game map to better display info
           gameMap['opponent_name'] = loserName;
           gameMap['my_points'] = gameMap[gameIdString]['winner_points'];
           gameMap['opp_points'] = gameMap[gameIdString]['loser_points'];
@@ -1504,6 +1610,8 @@ class _HistoryPageState extends State<HistoryPage> {
     return opponentsMaps;
   }
 
+  //TODO finish stat history implementation
+  //similar layout to others, this function should be done, but needs tested
   Future<List<Map<String, dynamic>>> getSwingSpeeds(String username) async {
     List<Map<String, dynamic>> swingsList = [];
 
@@ -1521,6 +1629,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return swingsList;
   }
 
+  ///display the list of wins
   Widget winsListWidget(List<Map<String, dynamic>> winsList) {
     print("in widget");
     print("winsList length: ${winsList.length}");
@@ -1540,6 +1649,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  ///display the list of losses
   Widget lossesListWidget(List<Map<String, dynamic>> lossesList) {
     print("in widget");
     print("lossesList length: ${lossesList.length}");
@@ -1559,6 +1669,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  ///display the list of opponents
   Widget oppsListWidget(List<Map<String, dynamic>> oppsList) {
     return Container(
       color: Theme.of(context).cardColor,
@@ -1576,6 +1687,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  ///display list of swing speeds
   Widget swingSpeedWidget(List<Map<String, dynamic>> swingsList) {
     return Container(
       color: Theme.of(context).cardColor,
@@ -1592,8 +1704,10 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  ///display error message
   Widget errorWidget() => Center(child: Text('Choose a Stat'));
 
+  ///get the necessary data depending on what stat is selected in dropdown
   Future<List<Map<String, dynamic>>> _getSelectedHistory(String username) async {
     if(selectedStat == "Wins"){
       // print("get wins");
@@ -1634,7 +1748,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
-                  // print("Game Page Connectivity: $online");
+                  //only display if offline
                   return online ? Text("") : Text("Offline");
                 }
             ),
@@ -1657,11 +1771,11 @@ class _HistoryPageState extends State<HistoryPage> {
               child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: _getSelectedHistory(context.read<User>().username),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
+                    if (snapshot.connectionState == ConnectionState.waiting) { //get selected data
                       return CircularProgressIndicator();
                     } else if (snapshot.hasError) {
                       return Text('Error: ${snapshot.error}');
-                    } else {
+                    } else { //display corresponding widget with loaded data
                       final data = snapshot.data!;
                       print(data);
                       switch(selectedStat){
@@ -1687,6 +1801,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
+///page where user logs in
 //TODO create user saving option, look at Michael's new code
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
@@ -1696,7 +1811,9 @@ class LoginPage extends StatefulWidget{
 }
 
 class _LoginPageState extends State<LoginPage> {
+  //check for internet connection
   final internetConnection = ConnectivityCheck();
+  //corresponds to selection of checkbox where user can save login
   bool saveChecked = false;
 
   @override
@@ -1708,11 +1825,11 @@ class _LoginPageState extends State<LoginPage> {
       body: Center(
         child: Column(
           children: [
-            MyTextEntryWidget(),
+            MyTextEntryWidget(), //widget holding text entries and button
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
-                  print("Login Page Connectivity: $online");
+                  //only display message is offline
                   return online ? Text("") : Text("Offline");
                 }
             ),
@@ -1739,7 +1856,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-
+///page where user can connect to ble device and logout
 class ProfilePage extends StatefulWidget{
   const ProfilePage({super.key});
 
@@ -1748,28 +1865,30 @@ class ProfilePage extends StatefulWidget{
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // bool isConnected = false;
+  //check internet connection
   final internetConnection = ConnectivityCheck();
+  //ble service uuid
   final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
   final characteristicUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495"); //TODO change from temp to button press
 
+  ///calls ble function to scan for discoverable ble devices
   void scan(){
     myBLE.startScan(onDeviceDiscovered: (device) {
-      setState(() {}); // Trigger rebuild; myBLE.devices is already updated
+      setState(() {}); //does not work without setState
     });
     print("scan pressed");
   }
 
+  ///calls ble connect function for the selected device and begins subscription
   void connect(DiscoveredDevice device){
     print("Pressed");
     myBLE.connectDevice(device, (bool status) {
+      //check for widget mounting issues to avoid crashed
       if(!mounted) return;
-      // setState(() {
-      //   isConnected = status;
-      // });
 
       print("Connection status updated: $status");
 
+      //device is connected so begin subscription to characteristic
       if(status){
         myBLE.readLiveFromDevice(
           connectedDevice: device,
@@ -1785,25 +1904,29 @@ class _ProfilePageState extends State<ProfilePage> {
 
   }
 
+  ///user logout by resetting global user
   void logout(){
     Provider.of<User>(context, listen: false).resetUser();
   }
 
-
+  ///scan for devices on every page build
   void initState() {
     super.initState();
     scan();
   }
 
+  ///quit scanning when leaving the page
   @override
   void dispose() {
-    myBLE.stopScan(); // You should add this in your BLE manager
+    myBLE.stopScan();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context){
+    //list of all devices from scan
     final List<DiscoveredDevice> devices = myBLE.devices;
+    //local copy of global user
     final user = context.read<User>();
 
     return Scaffold(
@@ -1816,7 +1939,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ValueListenableBuilder(
               valueListenable: internetConnection.isOnline,
               builder: (context, online, _){
-                // print("Game Page Connectivity: $online");
+                //only display message when offline
                 return online ? Text("") : Text("Offline");
               }
             ),
@@ -1832,7 +1955,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 "Hello, ${user.username}"
             ),
             SizedBox(height: 16,),
-            ElevatedButton(
+            ElevatedButton( //reset user and return to login page on logout
                 onPressed: () {
                   logout();
                   Navigator.pushReplacementNamed(context, '/');
@@ -1847,14 +1970,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     return ListTile(
                       title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
                       subtitle: Text(device.id),
-                      //trailing: Text("RSSI: ${device.rssi}"),
                       onTap: () => connect(device),
                     );
                   }
               ),
             ),
             ElevatedButton(
-                onPressed: scan,
+                onPressed: scan, //does not seem to work
                 child: Text("Rescan")
             )
           ],
