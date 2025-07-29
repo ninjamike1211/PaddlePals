@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.30.68:80";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -603,15 +603,39 @@ class BleFunctionality{
 
   ///subscribe to characteristic with a connected device and necessary uuids
   //TODO edit for use with other characteristics, likely make two other functions
-  void readLiveFromDevice({
+  void readScoreLiveFromDevice({
     required DiscoveredDevice connectedDevice,
-    required Uuid serviceUuid,
-    required Uuid characteristicUuid,
   }){
+
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final scoreCharUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495");
 
     print("in readLiveFromDevice");
     final characteristic = QualifiedCharacteristic(
-        characteristicId: characteristicUuid,
+        characteristicId: scoreCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+      final value = utf8.decode(data); //get decoded value
+      print("Received from BLE: $value");
+      latestData.value = value; //update latestData value
+    }, onError: (error) {
+      latestData.value = null;
+      print("Error subscribing to notifications: $error");
+    });
+  }
+
+  void readSwingLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+  }){
+
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final maxSwingCharUuid = Uuid.parse("8b2c1a45-7d3e-4f89-a2b1-c5d6e7f8a9b0");
+
+    print("in readLiveFromDevice");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: maxSwingCharUuid,
         serviceId: serviceUuid,
         deviceId: connectedDevice.id);
 
@@ -646,6 +670,8 @@ class Game {
   String winner = "";
   String gameType = "Standard";
   int startTime = 0;
+  double maxSwingSpeed = 0;
+  int quadrantsHit = 0;
 
   void incMyScore(){
     myScore += 1;
@@ -656,6 +682,7 @@ class Game {
   }
 
   ///true if a player has a score of at least 11 and is winning by at least 2
+  ///TODO decide how swing speed and hit location win
   bool checkForWinner(){
     if (myScore >= 11 && opponentScore <= myScore - 2){
       inProgress = false;
@@ -706,10 +733,15 @@ class Game {
   }
 
   ///convert the String gameType to a int value
-  //TODO add other game types
   int gameTypeToInt(){
     if (gameType == "Standard"){
       return 0;
+    }
+    else if(gameType == "Swing Speed"){
+      return 1;
+    }
+    else if(gameType == "Hit Location"){
+      return 2;
     }
     else{
       print("invalid game type");
@@ -968,6 +1000,8 @@ class _GamePageState extends State<GamePage> {
   bool isLoading = true;
   final internetConnection = ConnectivityCheck(); //check for internet connection
   late VoidCallback _bleDataListener; //function for receiving new data from ble
+  List<String> gameTypeOptions = ['Standard', 'Swing Speed', 'Hit Location'];
+  String? selectedGameType;
 
   ///check if the user has inputted an opponent and update game
   void loadOpponent(){
@@ -983,17 +1017,27 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
-  ///check game status to determine how the page title should appear
+  ///check game status and type to determine how the page title should appear
   String getTitle(){
     String title = "";
     if (game.inProgress){
-      title = "Current Game";
+      title = "Current";
     }
     else if (game.isFinished){
-      title = "Finished Game";
+      title = "Finished";
     }
     else{
-      title = "Start a Game";
+      title = "Start";
+    }
+
+    if(game.gameType == "Standard"){
+      title += " a Standard Game";
+    }
+    else if(game.gameType == "Swing Speed"){
+      title += " a Swing Speed Game";
+    }
+    else if(game.gameType == "Hit Location"){
+      title += " a Hit Location Game";
     }
 
     return title;
@@ -1269,6 +1313,24 @@ class _GamePageState extends State<GamePage> {
             ],
           ),
           Text("Game type: ${game.gameType}"),
+          SizedBox(height: 16,),
+          DropdownButton<String>(
+            hint: Text("Select a game type"),
+            value: selectedGameType,
+            onChanged: (String? newValue){
+              setState(() {
+                selectedGameType = newValue;
+                game.gameType = selectedGameType ?? "Standard";
+              });
+            },
+            items: gameTypeOptions.map((String value) {
+              return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value)
+              );
+            }).toList(),
+          ),
+          SizedBox(height: 16,),
           ElevatedButton(
               onPressed: startStandardGame,
               child: Text("Start Game")
@@ -1879,8 +1941,6 @@ class _ProfilePageState extends State<ProfilePage> {
   //check internet connection
   final internetConnection = ConnectivityCheck();
   //ble service uuid
-  final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
-  final characteristicUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495"); //TODO change from temp to button press
 
   ///calls ble function to scan for discoverable ble devices
   void scan(){
@@ -1901,12 +1961,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
       //device is connected so begin subscription to characteristic
       if(status){
-        myBLE.readLiveFromDevice(
-          connectedDevice: device,
-          serviceUuid: serviceUuid,
-          characteristicUuid: characteristicUuid,
-        );
-
+        myBLE.readScoreLiveFromDevice(connectedDevice: device);
+        myBLE.readSwingLiveFromDevice(connectedDevice: device);
       }
       else{
         print("Ble connection failed");
