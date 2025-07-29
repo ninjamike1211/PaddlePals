@@ -8,7 +8,7 @@ import time
 class restAPI:
     """A RESTful API for the database server of PicklePals. Also controls the SQLite database directly"""
 
-    API_KEY_TIMEOUT = 1 * 60
+    API_KEY_TIMEOUT = 30 * 60
     ADMIN_USER = 0
     UNKNOWN_USER = -1
 
@@ -212,10 +212,18 @@ class restAPI:
     def _gen_ApiKey(self, user_id:int):
         rand_val = os.urandom(12)
         api_key = base64.b64encode(rand_val).decode('utf-8')
+        while api_key in self.__apiKeys:
+            rand_val = os.urandom(12)
+            api_key = base64.b64encode(rand_val).decode('utf-8')
+
         self.__apiKeys[api_key] = {'user_id':user_id, 'expiration':time.time() + self.API_KEY_TIMEOUT}
 
         rand_val = os.urandom(12)
         renew_key = base64.b64encode(rand_val).decode('utf-8')
+        while api_key in self.__renewalKeys:
+            rand_val = os.urandom(12)
+            renew_key = base64.b64encode(rand_val).decode('utf-8')
+
         self.__renewalKeys[renew_key] = user_id
 
         return api_key, renew_key
@@ -228,7 +236,6 @@ class restAPI:
         elif time.time() <  key_info['expiration']:
             return key_info['user_id']
         else:
-            self.__apiKeys.pop(apiKey)
             raise self.APIError('API key has expired, please renew with the renewal key.', 498)
     
 
@@ -237,8 +244,11 @@ class restAPI:
             raise self.APIError(f'Invalid parameters for pickle/user/get, must include user ID: {params}', 400)
         
         user_ids = params['user_id']
-        if type(user_ids) is int:
+        if type(user_ids) == int:
             user_ids = [user_ids]
+
+        if type(user_ids) != list:
+            raise self.APIError(f'Invalid user id(s) type: {user_ids}', 400)
 
         result_dict = {}
         for user_id in user_ids:
@@ -289,7 +299,7 @@ class restAPI:
                     raise self.APIError(f'Invalid username {val}', 400)
                 
                 if self._is_username_existing(val):
-                    raise self.APIError(f'Username {val} already exists', 403)
+                    raise self.APIError(f'Username {val} already exists', 400)
 
                 self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
 
@@ -306,8 +316,6 @@ class restAPI:
         
         username = params['username']
         password = params['password']
-        # TODO: password authentication
-        # TODO: check that username doesn't already exist
 
         if not self._check_username(username):
             raise self.APIError(f'Invalid username {username}', 400)
@@ -316,7 +324,7 @@ class restAPI:
             raise self.APIError(f'Username {username} already exists', 403)
         
         if not self._check_password(password):
-            raise self.APIError(f'Invalid password "{password}", must be at least 10 characters long.', 400)
+            raise self.APIError(f'Invalid password "{password}"', 400)
 
         pass_hash, salt = self.gen_password_hash(password)
 
@@ -550,27 +558,34 @@ class restAPI:
             api_key, renew_key = self._gen_ApiKey(user_id)
 
             print(f'Authentication successful for user {username}')
-            return {'apiKey':api_key, 'renewaKey':renew_key}
+            return {'apiKey':api_key, 'renewalKey':renew_key}
         
         else:
             raise self.APIError(f'Authentication failed for user {username}', 401)
         
 
     def _api_user_auth_renew(self, params: dict):
-        renew_key_user = str(params['renewalKey'])
-        user_id = int(params['user_id'])
-
-        renew_key_user = self.__renewalKeys.get(renew_key_user)
-
-        if user_id == renew_key_user:
-            api_key, renew_key = self._gen_ApiKey(user_id)
-            return {'apiKey':api_key, 'renewaKey':renew_key}
+        if 'apiKey' not in params or 'renewalKey' not in params:
+            raise self.APIError(f'Invalid parameters for POST pickle/auth/renew, must include apiKey and renewalKey: {params}', 400)
         
-        elif not renew_key_user:
+        old_key = str(params['apiKey'])
+        old_renew_key = str(params['renewalKey'])
+        
+        renew_key_user = self.__renewalKeys.get(old_renew_key)
+        if renew_key_user == None:
             raise self.APIError(f'Key renewal failed, renewal key not recognized', 401)
+
+        old_key_user = self.__apiKeys.get(old_key)
+        if old_key_user == None:
+            raise self.APIError(f'Key renewal failed, old api key not recognized', 401)
+
+        if old_key_user and old_key_user['user_id'] == renew_key_user:
+            self.__apiKeys.pop(old_key)
+            api_key, renew_key = self._gen_ApiKey(renew_key_user)
+            return {'apiKey':api_key, 'renewalKey':renew_key}
         
         else:
-            raise self.APIError(f'Key renewal failed, incorrect renewal key', 401)
+            raise self.APIError(f'Key renewal failed, old api key and renewal key do not match', 401)
     
 
     def _api_game_get(self, params: dict):
