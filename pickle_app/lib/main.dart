@@ -1036,6 +1036,7 @@ class _GamePageState extends State<GamePage> {
     );
   }
 
+  ///increase my score in game and check for winner
   void incMyScore(){
     setState(() {
       game.incMyScore();
@@ -1048,6 +1049,7 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  ///increase opponent score in game and check for winner
   void incOppScore(){
     setState(() {
       game.incOppScore();
@@ -1101,7 +1103,7 @@ class _GamePageState extends State<GamePage> {
     //handle no registered opponent
     if (game.opponentName == "Opponent"){
       //eventually change to NULL user
-      game.opponentName = "testUser";
+      game.opponentName = "testUser"; //TODO change to anonymous user
     }
 
     if(game.getWinner() == "me"){
@@ -1155,16 +1157,23 @@ class _GamePageState extends State<GamePage> {
     _bleDataListener = () {
       if (!mounted) return;
       final data = myBLE.latestData.value;
-      if (data != null) {
-        setState(() {
-          print("New data in GamePage: $data");
-          game.myScore = int.tryParse(data.trim()) ?? 0;
-        });
-      } else {
-        setState(() {
-          game.myScore = -1;
-        });
+      if (data != null) { //new data has been received and a game has been started
+        if(game.inProgress){
+          print("Game in progress: ${game.inProgress}");
+          setState(() {
+            print("New data in GamePage: $data");
+            incMyScore();
+          });
+        }
+        else{
+          startStandardGame();
+        }
       }
+      //else {
+      //   setState(() {
+      //     game.myScore = -1;
+      //   });
+      // }
     };
 
     //use the listener function to handle new ble data
@@ -1205,11 +1214,13 @@ class _GamePageState extends State<GamePage> {
                     fontSize: 24
                 ),
               ),
-              SizedBox(width: 70,), //TODO fix spacing to handle long opponent names
-              Text(
-                game.opponentName,
-                style: TextStyle(
-                    fontSize: 24
+              SizedBox(width: 70,),
+              Flexible(
+                child: Text(
+                  game.opponentName,
+                  style: TextStyle(
+                      fontSize: 24
+                  ),
                 ),
               ),
             ],
