@@ -44,27 +44,27 @@
 // Seven-segment pins - CHANGE LATER
 
 // Segment pins for display 1
-#define seg1_a 2
-#define seg1_b 3
-#define seg1_c 4
-#define seg1_d 5
-#define seg1_e 6
-#define seg1_f 7
-#define seg1_g 8
+#define seg1_a 5
+#define seg1_b 16
+#define seg1_c 15
+#define seg1_d 13
+#define seg1_e 14
+#define seg1_f 23
+#define seg1_g 19
 
 // Segment pins for display 2
-#define seg2_a 9
-#define seg2_b 10
-#define seg2_c 11
-#define seg2_d 12
-#define seg2_e 13
-#define seg2_f 14
-#define seg2_g 15
+#define seg2_a 4
+#define seg2_b 17
+#define seg2_c 25
+#define seg2_d 26
+#define seg2_e 27
+#define seg2_f 32
+#define seg2_g 33
 
-#define fsr_1_pin 1
-#define fsr_2_pin 1
-#define fsr_3_pin 1
-#define fsr_4_pin 1
+#define fsr_1_pin 34
+#define fsr_2_pin 35
+#define fsr_3_pin 32
+#define fsr_4_pin 33
 
 // Create array to get quadrant hits
 int quadrantHits[4] = {0, 0, 0, 0};  // Q1-Q4 hit counts
@@ -146,7 +146,12 @@ float currentMaxSwingSpeed = 0.0;
 
 // Variables for swing speed
 bool swingActive = false;
-float swingPeakSpeed = 0.0;
+
+// Variables to store the peak swing speed (weighed and raw)
+float swingPeakWeighted = 0.0f;
+float swingPeakMagnitude = 0.0f;
+
+// Variable to store the time in which the swing started
 unsigned long swingStartTime = 0;
 
 // Adjusted threshold: 0.133 -> 0.4 -> 0.60 -> 0.70
@@ -503,6 +508,7 @@ void loop() {
   // Or if it gives the number of games played and the total points, calculate the average PPG
 
   if (deviceConnected) {
+
     // Get the current millis
     unsigned long currentMillis = millis();
 
@@ -551,7 +557,12 @@ void loop() {
       float cleanX = (abs(wx) > 0.1) ? wx : 0.0;
       float cleanY = (abs(wy) > 0.1) ? wy : 0.0;
       float cleanZ = (abs(wz) > 0.1) ? wz : 0.0;
-      float newSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, USE_DIRECTIONAL_BIAS);
+
+      // Compute weighted swing speed
+      float weightedSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, USE_DIRECTIONAL_BIAS);
+
+      // Compute true (unbiased) swing speed for reporting
+      float magnitudeSpeed  = calculateSwingSpeed(cleanX, cleanY, cleanZ, /*useBias*/ false);
 
       // Use following for graphing purposes
       // Print the current time, the current swing speed, and if the swing is active
@@ -560,47 +571,51 @@ void loop() {
       //unsigned long currentMillis = millis();
       //Serial.print(currentMillis);
       //Serial.print(",");
-      //Serial.print(newSpeed);   // Current swing speed (m/s)
+      //Serial.print(weightedSpeed);   // Current swing speed (m/s)
       //Serial.print(",");
       //Serial.println(swingActive ? "1" : "0");  // Optional: indicate active swing
 
       // Calculate magnitude of total acceleration - we wsill use this along with the swingThreshold to record a swing
       float accelMagnitude = sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2));
+      // Remove gravity from triggering swings by itself
+      float accDynamic = fabs(accelMagnitude - 9.80665f);     // remove gravity
 
       if (!swingActive) {
         // Start of a new swing
-        if (newSpeed > swingThreshold && accelMagnitude > 2.0 && (millis() - lastSwingEndTime > swingCooldown)) {
+        if (weightedSpeed > swingThreshold && accDynamic > 2.0 && (millis() - lastSwingEndTime > swingCooldown)) {
           swingActive = true;
-          swingPeakSpeed = newSpeed;
+          swingPeakWeighted = weightedSpeed;
+          // Get the raw magnitude speed
+          swingPeakMagnitude = magnitudeSpeed;
           swingStartTime = millis();
         }
       } else {
         // In an active swing
-        if (newSpeed > swingPeakSpeed) {
-          swingPeakSpeed = newSpeed;
+        if (weightedSpeed > swingPeakWeighted) {
+          swingPeakWeighted = weightedSpeed;
+          // Update the corresponding raw magnitude
+          swingPeakMagnitude = magnitudeSpeed;
         }
 
         // End swing if speed drops below threshold (or fixed duration elapsed)
-        if (newSpeed < swingThreshold || millis() - swingStartTime > 700) {
+        if (weightedSpeed < swingThreshold || millis() - swingStartTime > 700) {
           swingActive = false;
           lastSwingEndTime = millis();
 
-          // Record peak and update BLE logic
-          newSwingString = String(swingPeakSpeed, 2) + " m/s";
-          float currentMax = checkMaxSwingSpeed(swingPeakSpeed);
+          // report the raw magnitude peak over BLE
+          newSwingString = String(swingPeakMagnitude, 2) + " m/s";
+          float currentMax = checkMaxSwingSpeed(swingPeakMagnitude);
 
           static char maxSwingArray[50];
           maxSwingString = String(currentMax, 2) + " m/s";
           maxSwingString.toCharArray(maxSwingArray, 50);
-
-          if (maxSwingSpeedChar != nullptr) {
+          if (maxSwingSpeedChar) {
             maxSwingSpeedChar->setValue(maxSwingArray);
             maxSwingSpeedChar->notify();
           }
 
           Serial.print("SWING DETECTED: ");
           Serial.println(newSwingString);
-
           Serial.print("Current Max: ");
           Serial.println(maxSwingString);
         }
