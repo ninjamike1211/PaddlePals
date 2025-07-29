@@ -87,7 +87,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(friend_id)":{"username":(username)},
+        "(friend_id)":{"username":(username), "gamesPlayed":(gamesPlayed), "winRate":(winPercentage)},
         ...
     }
     ```
@@ -126,6 +126,9 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **params**:
     - `user_id`: the user ID to request the games list from
     - `won` *(optional)*: either "true" or "false", filters for games that the user either won or lost.
+    - `opponent_id`: *(optional)*: filter games by the user ID of a specific opponent
+    - `min_time` *(optional)*: minimum timestamp to search through
+    - `max_time` *(optional)*: maximum timestamp to search through
 
     **returns**:
     ```js
@@ -134,7 +137,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
 - `pickle/user/auth`
     ---
-    Authenticates using a username and password, returns an API token for accessing user account data.
+    Authenticates using a username and password, returns an API token for accessing user account data and a renewal key for generating a new API token.
 
     **params**:
     - `username`: account username
@@ -142,7 +145,20 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 
     **returns**:
     ```js
-    {"success":(true/false), "apiKey":(api_key)}
+    {"apiKey":(api_key), "renewalKey":(renewalKey)}
+    ```
+
+- `pickle/user/auth/renew`
+    ---
+    Renews an API key with a new one based on an existing renewal key. Takes in the user ID and existing renewal key, and returns a new API key and new renewal key.
+
+    **params**:
+    - `user_id`: the user ID of the token to renew
+    - `renewalKey`: renewal key
+
+    **returns**:
+    ```js
+    {"apiKey":{api_key}, "renewalKey":(renewalKey)}
     ```
 
 ## pickle/game
@@ -156,7 +172,37 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {
-        "(game_id)": {"winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
+        "(game_id)": {"timestamp":(timestamp), "game_type":(game_type), "winner_id":(winner_id), "loser_id":(loser_id), "winner_points":(winner_points), "loser_points":(loser_points)},
+        ...
+    }
+    ```
+
+- `pickle/game/stats`
+    ---
+    Returns the game statistics of a user associated with a specific game ID. Returns `None` for any games which don't have registered game stats
+
+    **params**:
+    - `user_id`: the user ID to request the stats of
+    - `game_id` *(optional)*: the game ID(s) of the game(s) to request as an int or list of ints
+
+    **returns**:
+    ```js
+    {
+        "(game_id)": {
+            "timestamp":(timestamp),
+            "swing_count":(swing_count),
+            "swing_hits":(swing_hit),
+            "hit_percentage":(hit_percentage),
+            "swing_min":(swing_min),
+            "swing_max":(swing_max),
+            "swing_avg":(swing_avg),
+            "hit_modeX":(hit_modeX),
+            "hit_modeY":(hit_modeY),
+            "hit_avgX":(hit_avgX),
+            "hit_avgY":(hit_avgY)
+        },
+        ...
+        "(game_id)":null,
         ...
     }
     ```
@@ -166,6 +212,8 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     Used to register a game in the database. All information about the game must be provided. Returns the game ID of the newly registered game.
 
     **params**:
+    - `timestamp`: Unix timestamp (int) of when the game began
+    - `game_type`: an int representing the game type
     - `winner_id`: user ID of the winning player
     - `loser_id`: user ID of the losing played
     - `winner_points`: the number of points scored by the winning player
@@ -174,4 +222,26 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     **returns**:
     ```js
     {"game_id":(game_id)}
+    ```
+
+- `pickle/game/registerStats`
+    ---
+    Registers game stats for a specific user associated with a specific game
+
+    **params**:
+    - `user_id`: the user ID of the stats to record
+    - `game_id`: the game ID of the game
+    - `swing_count`: number of swings user performed in the game
+    - `swing_hits`: number of swings which hit the ball by user in the game
+    - `swing_min`: minimum swing speed
+    - `swing_max`: maximum swing speed
+    - `swing_avg`: average swing speed
+    - `hit_modeX`: x coordinate of mode hit position
+    - `hit_modeY`: y coordinate of mode hit position
+    - `hit_avgX`: x coordinate of average hit position
+    - `hit_avgY`: y coordinate of average hit position
+
+    **returns**:
+    ```js
+    {"success":(true/false)}
     ```
