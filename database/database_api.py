@@ -244,8 +244,11 @@ class restAPI:
             raise self.APIError(f'Invalid parameters for pickle/user/get, must include user ID: {params}', 400)
         
         user_ids = params['user_id']
-        if type(user_ids) is int:
+        if type(user_ids) == int:
             user_ids = [user_ids]
+
+        if type(user_ids) != list:
+            raise self.APIError(f'Invalid user id(s) type: {user_ids}', 400)
 
         result_dict = {}
         for user_id in user_ids:
@@ -296,7 +299,7 @@ class restAPI:
                     raise self.APIError(f'Invalid username {val}', 400)
                 
                 if self._is_username_existing(val):
-                    raise self.APIError(f'Username {val} already exists', 403)
+                    raise self.APIError(f'Username {val} already exists', 400)
 
                 self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
 
@@ -313,8 +316,6 @@ class restAPI:
         
         username = params['username']
         password = params['password']
-        # TODO: password authentication
-        # TODO: check that username doesn't already exist
 
         if not self._check_username(username):
             raise self.APIError(f'Invalid username {username}', 400)
@@ -323,7 +324,7 @@ class restAPI:
             raise self.APIError(f'Username {username} already exists', 403)
         
         if not self._check_password(password):
-            raise self.APIError(f'Invalid password "{password}", must be at least 10 characters long.', 400)
+            raise self.APIError(f'Invalid password "{password}"', 400)
 
         pass_hash, salt = self.gen_password_hash(password)
 

@@ -328,7 +328,7 @@ def test_checkApiKey(tmp_path):
     # wait for timeout
     time.sleep(5)
 
-    # CHeck that keys are invalid now
+    # Check that keys are invalid now
     with pytest.raises(restAPI.APIError) as apiError:
         api._checkApiKey(keyAdmin)
     assert apiError.value.code == 498
@@ -338,7 +338,6 @@ def test_checkApiKey(tmp_path):
     with pytest.raises(restAPI.APIError) as apiError:
         api._checkApiKey(keyB)
     assert apiError.value.code == 498
-    
 
 def test_user_get_admin(tmp_path):
     api = setup_api(tmp_path)
@@ -360,95 +359,206 @@ def test_user_get_admin(tmp_path):
     assert apiError.value.code == 400
 
 
-def test_user_get(tmp_path):
-    api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+def test_api_user_get(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
 
-    # Valid test cases
-    userA = api._api_user_get({'user_id':1})
-    userB = api._api_user_get({'user_id':2})
-
+    # get all user info
+    userA = api._api_user_get({'user_id':1, 'sender_id':0})
     assert userA == {1:{'username':'userA', 'gamesPlayed':3, 'gamesWon':1, 'averageScore':10.0}}
+    userB = api._api_user_get({'user_id':2, 'sender_id':0})
     assert userB == {2:{'username':'userB', 'gamesPlayed':3, 'gamesWon':2, 'averageScore':9.0}}
 
-    users = api._api_user_get({'user_id':[1,2]})
+    # get all user info at once
+    users = api._api_user_get({'user_id':[1,2], 'sender_id':0})
     assert users == {
         1:{'username':'userA', 'gamesPlayed':3, 'gamesWon':1, 'averageScore':10.0},
         2:{'username':'userB', 'gamesPlayed':3, 'gamesWon':2, 'averageScore':9.0}
     }
 
-    user = api._api_user_get({'user_id':[1,2], 'objects':['username']})
+    # Test getting each individual object
+    user = api._api_user_get({'user_id':[1,2], 'objects':['username'], 'sender_id':0})
     assert user == {1:{'username':'userA'},
                     2:{'username':'userB'}}
 
-    user = api._api_user_get({'user_id':[1,2], 'objects':['gamesPlayed']})
+    user = api._api_user_get({'user_id':[1,2], 'objects':['gamesPlayed'], 'sender_id':0})
     assert user == {1:{'gamesPlayed':3},
                     2:{'gamesPlayed':3}}
 
-    user = api._api_user_get({'user_id':[1,2], 'objects':['gamesWon']})
+    user = api._api_user_get({'user_id':[1,2], 'objects':['gamesWon'], 'sender_id':0})
     assert user == {1:{'gamesWon':1},
                     2:{'gamesWon':2}}
 
-    user = api._api_user_get({'user_id':[1,2], 'objects':['averageScore']})
+    user = api._api_user_get({'user_id':[1,2], 'objects':['averageScore'], 'sender_id':0})
     assert user == {1:{'averageScore':10.0},
                     2:{'averageScore':9.0}}
-
-    api._api_user_delete({'user_id':2})
-    user = api._api_user_get({'user_id':2})
-    assert user == {2:{'username':'deleted_user', 'gamesPlayed':None, 'gamesWon':None, 'averageScore':None}}
-
-    # Error test cases
+    
+    # Test with no parameters
     with pytest.raises(restAPI.APIError) as apiError:
         api._api_user_get({})
     assert apiError.value.code == 400
 
+    # Test invalid users
     with pytest.raises(restAPI.APIError) as apiError:
-        api._api_user_get({'user_id':0})
+        api._api_user_get({'user_id':0, 'sender_id':0})
+    assert apiError.value.code == 404
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':-1, 'sender_id':0})
+    assert apiError.value.code == 404
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':3, 'sender_id':0})
+    assert apiError.value.code == 404
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':[0,1], 'sender_id':0})
     assert apiError.value.code == 404
 
-
+    # Test with no user_id parameter
     with pytest.raises(restAPI.APIError) as apiError:
-        api._api_user_get({'user_id':[0,1]})
-    assert apiError.value.code == 404
-
-    with pytest.raises(restAPI.APIError) as apiError:
-        api._api_user_get({'user_id':1, 'objects':['notAnObject']})
+        api._api_user_get({'incorrect_parameter':'hahaha', 'sender_id':0})
     assert apiError.value.code == 400
 
+    # Test with wrong user_id type
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':'hahaha', 'sender_id':0})
+    assert apiError.value.code == 400
 
-def test_create_user(tmp_path):
-    api = setup_api(tmp_path)
+    # Test invalid object
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':1, 'objects':['username','not_an_object'], 'sender_id':0})
+    assert apiError.value.code == 400
 
+    # Test viewing user without permissions
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':2, 'sender_id':1})
+    assert apiError.value.code == 403
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_get({'user_id':[1,2], 'sender_id':1})
+    assert apiError.value.code == 403
+
+    api._api_user_delete({'user_id':2, 'sender_id':0})
+    user = api._api_user_get({'user_id':2, 'sender_id':0})
+    assert user == {2:{'username':'deleted_user', 'gamesPlayed':None, 'gamesWon':None, 'averageScore':None}}
+
+def test_api_user_set(tmp_path):
+    api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
+
+    # Test for no user_id
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'not_user_id':1, 'sender_id':0})
+    assert apiError.value.code == 400
+
+    # Test invalid perms
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':2, 'username':'invalid_user!!', 'sender_id':1})
+    assert apiError.value.code == 403
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'invalid_user!!', 'sender_id':2})
+    assert apiError.value.code == 403
+
+    # Test invalid user
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':0, 'username':'invalid_user!!', 'sender_id':0})
+    assert apiError.value.code == 404
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':-1, 'username':'invalid_user!!', 'sender_id':0})
+    assert apiError.value.code == 404
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':-3, 'username':'invalid_user!!', 'sender_id':0})
+    assert apiError.value.code == 404
+
+    # Test for no set params
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'sender_id':0})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'not_username':'haha', 'sender_id':0})
+    assert apiError.value.code == 400
+
+    # Test invalid username
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'bob', 'sender_id':0})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'admin', 'sender_id':0})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'deleted_user', 'sender_id':0})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'unknown_user', 'sender_id':0})
+    assert apiError.value.code == 400
+
+    # Test duplicate user
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'userA', 'sender_id':0})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_set({'user_id':1, 'username':'userB', 'sender_id':0})
+    assert apiError.value.code == 400
+
+    # Test valid
+    result = api._api_user_set({'user_id':1, 'username':'userANew', 'sender_id':1})
+    assert result == {'success':True}
+    api._dbCursor.execute("SELECT username FROM users WHERE user_id=1")
+    assert api._dbCursor.fetchone() == ('userANew',)
+
+    result = api._api_user_set({'user_id':2, 'username':'userBNew', 'sender_id':2})
+    assert result == {'success':True}
+    api._dbCursor.execute("SELECT username FROM users WHERE user_id=2")
+    assert api._dbCursor.fetchone() == ('userBNew',)
+
+    result = api._api_user_set({'user_id':1, 'username':'userANewNew', 'sender_id':0})
+    assert result == {'success':True}
+    api._dbCursor.execute("SELECT username FROM users WHERE user_id=1")
+    assert api._dbCursor.fetchone() == ('userANewNew',)
+
+    result = api._api_user_set({'user_id':2, 'username':'userBNewNew', 'sender_id':0})
+    assert result == {'success':True}
+    api._dbCursor.execute("SELECT username FROM users WHERE user_id=2")
+    assert api._dbCursor.fetchone() == ('userBNewNew',)
+
+def test_api_user_create(tmp_path):
+    api = setup_api(tmp_path, useAuth=True)
+
+    # Create user
     user_id = api._api_user_create({'username':'createUserTest', 'password':'create_User_Password0'})
     assert user_id == {'user_id':1}
 
-    user = api._api_user_get({'user_id':1})
-    assert user == {1: {'username':'createUserTest', 'gamesPlayed':0, 'gamesWon':0, 'averageScore':0.0}}
+    # Check user was created in database
+    api._dbCursor.execute("SELECT user_id, username, valid, gamesPlayed, gamesWon, averageScore FROM users WHERE user_id=1")
+    assert api._dbCursor.fetchone() == (1, 'createUserTest', 1, 0, 0, 0.0)
 
-    user_id = api._api_user_id({'username':'createUserTest'})
-    assert user_id == {'createUserTest': 1}
+    # Check password auth is correct
+    assert api._check_userAuth('createUserTest', 'create_User_Password0')
 
-    result = api._api_user_auth({'username':'createUserTest', 'password':'create_User_Password0'})
-    assert result['apiKey']
-    assert result['renewalKey']
-
-
-def test_create_bad_users(tmp_path):
-    api = setup_api(tmp_path, users={'testUser':'test_Pass101'})
-
+    # Test invalid username
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_create({'username':'bob', 'password':'test_Pass101'})
+    assert apiError.value.code == 400
     with pytest.raises(restAPI.APIError) as apiError:
         api._api_user_create({'username':'admin', 'password':'test_Pass101'})
     assert apiError.value.code == 400
-
     with pytest.raises(restAPI.APIError) as apiError:
-        result = api._api_user_create({'username':'deleted_user', 'password':'test_Pass101'})
+        api._api_user_create({'username':'deleted_user', 'password':'test_Pass101'})
+    assert apiError.value.code == 400
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_create({'username':'unknown_user', 'password':'test_Pass101'})
     assert apiError.value.code == 400
 
+    # Test existing username
     with pytest.raises(restAPI.APIError) as apiError:
-        result = api._api_user_create({'username':'testUser', 'password':'different_Test_Pass0'})
+        api._api_user_create({'username':'createUserTest', 'password':'test_Pass101'})
     assert apiError.value.code == 403
+
+    # Test invalid password
+    with pytest.raises(restAPI.APIError) as apiError:
+        api._api_user_create({'username':'newUser', 'password':'notvalid'})
+    assert apiError.value.code == 400
 
 
 def test_delete_user(tmp_path):
