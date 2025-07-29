@@ -359,13 +359,14 @@ void initBLECharacteristics(BLEService* service) {
     return;
   }
   
+  maxSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
+	maxSwingSpeedDesc->setValue("Max Swing Speed");
+
   maxSwingSpeedChar->addDescriptor(maxSwingSpeedDesc);
   maxSwingSpeedChar->addDescriptor(new BLE2902());
   Serial.println("Max swing speed characteristic setup complete");
 
-  
-  // Create new swing speed characteristic
-  Serial.println("Creating new swing speed characteristic...");
+  Serial.println("Creating hit summary characteristic...");
   hitSummaryChar = service->createCharacteristic(
     HIT_SUMMARY_CHAR_UUID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
@@ -670,13 +671,12 @@ void loop() {
         // Print an empty line to seperate data
         Serial.println();
     }
-    else {
-      // Reset connection tracking when disconnected
-      static unsigned long connectionTime = 0;
-      static bool sentInitialScore = false;
-      connectionTime = 0;
-      sentInitialScore = false;
-    }
+  } else {
+    // Reset connection tracking when disconnected
+    static unsigned long connectionTime = 0;
+    static bool sentInitialScore = false;
+    connectionTime = 0;
+    sentInitialScore = false;
   }
 }
 
@@ -708,7 +708,7 @@ void clickHandler(Button2& btn) {
   }
 
   // Immediately update BLE if connected
-  if (deviceConnected && scoreChanged) {
+  if (deviceConnected) {
     String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints);
     static char scoreArray[50];
     scoreUpdate.toCharArray(scoreArray, 50);
@@ -832,8 +832,9 @@ void updateQuadrantHits() {
     static char hitArray[100];
     hitSummary.toCharArray(hitArray, 100);
 
-    hitSummaryChar->setValue(hitArray);
-    hitSummaryChar->notify();
+    if (hitSummaryChar != nullptr) {
+      hitSummaryChar->setValue(hitArray);
+      hitSummaryChar->notify();
   }
 }
 
