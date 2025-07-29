@@ -98,7 +98,7 @@ class restAPI:
     def _init_db(self):
         self._dbCursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, salt BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
         self._dbCursor.execute('CREATE TABLE games(game_id INT, timestamp INT, game_type INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
-        self._dbCursor.execute('CREATE TABLE user_game_stats(user_id INT, game_id INT, swing_count INT, swing_hits INT, swing_min REAL, swing_max REAL, swing_avg REAL, hit_modeX REAL, hit_modeY REAL, hit_avgX REAL, hit_avgY REAL)')
+        self._dbCursor.execute('CREATE TABLE user_game_stats(user_id INT, game_id INT, swing_count INT, swing_hits INT, swing_max REAL, Q1_hits INT, Q2_hits INT, Q3_hits INT, Q4_hits INT)')
         self._dbCursor.execute('CREATE TABLE friends(userA INT, userB INT)')
 
         pass_hash, salt = self.gen_password_hash('root')
@@ -638,13 +638,11 @@ class restAPI:
                         "swing_count": game_stats[2],
                         "swing_hits": game_stats[3],
                         "hit_percentage": game_stats[3] / game_stats[2],
-                        "swing_min": game_stats[4],
-                        "swing_max": game_stats[5],
-                        "swing_avg": game_stats[6],
-                        "hit_modeX": game_stats[7],
-                        "hit_modeY": game_stats[8],
-                        "hit_avgX": game_stats[9],
-                        "hit_avgY": game_stats[10]
+                        "swing_max": game_stats[4],
+                        "Q1_hits": game_stats[5],
+                        "Q2_hits": game_stats[6],
+                        "Q3_hits": game_stats[7],
+                        "Q4_hits": game_stats[8]
                     }
                 else:
                     stats[id] = None
@@ -695,13 +693,11 @@ class restAPI:
         game_id = int(params['game_id'])
         swing_count = int(params['swing_count'])
         swing_hits = int(params['swing_hits'])
-        swing_min = float(params['swing_min'])
         swing_max = float(params['swing_max'])
-        swing_avg = float(params['swing_avg'])
-        hit_modeX = float(params['hit_modeX'])
-        hit_modeY = float(params['hit_modeY'])
-        hit_avgX = float(params['hit_avgX'])
-        hit_avgY = float(params['hit_avgY'])
+        Q1_hits = float(params['Q1_hits'])
+        Q2_hits = float(params['Q2_hits'])
+        Q3_hits = float(params['Q3_hits'])
+        Q4_hits = float(params['Q4_hits'])
 
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
@@ -710,8 +706,8 @@ class restAPI:
         #     raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
 
         self._dbCursor.execute(
-            "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, game_id, swing_count, swing_hits, swing_min, swing_max, swing_avg, hit_modeX, hit_modeY, hit_avgX, hit_avgY))
+            "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, game_id, swing_count, swing_hits, swing_max, Q1_hits, Q2_hits, Q3_hits, Q4_hits))
         self._database.commit()
 
         # self.updateUserGameStats(winner_id)

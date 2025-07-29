@@ -49,7 +49,7 @@ def test_init(tmp_path):
     api._api_user_create({'username':'testUserA', 'password':'t3stP@ssw0rd!'})
     api._api_user_create({'username':'testUserB', 'password':'t3stP@ssw0rd!'})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':5})
-    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':161, 'swing_hits':101, 'swing_min':9, 'swing_max':19, 'swing_avg':11.767, 'hit_modeX':-0.5, 'hit_modeY':0.0, 'hit_avgX':-0.398, 'hit_avgY':0.042})
+    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':25, 'Q2_hits':25, 'Q3_hits':27, 'Q4_hits':24})
     api._api_user_addFriend({'user_id':1, 'friend_id':2})
     api.close()
 
@@ -619,7 +619,7 @@ def test_modify_username(tmp_path):
 
     with pytest.raises(restAPI.APIError) as apiError:
         result = api._api_user_set({'user_id':1, 'username':'testUser2'})
-    assert apiError.value.code == 403
+    assert apiError.value.code == 400
 
 def test_post_game(tmp_path):
     api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
@@ -690,23 +690,23 @@ def test_game_stats(tmp_path):
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
     api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
 
-    result = api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':150, 'swing_hits':90, 'swing_min':10, 'swing_max':20, 'swing_avg':13.467, 'hit_modeX':0.5, 'hit_modeY':0.0, 'hit_avgX':0.412, 'hit_avgY':-0.142})
+    result = api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':150, 'swing_hits':90, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22})
     assert result == {'success':True}
 
-    result = api._api_game_registerStats({'user_id':2, 'game_id':0, 'swing_count':139, 'swing_hits':83, 'swing_min':11, 'swing_max':25, 'swing_avg':17.395, 'hit_modeX':0.0, 'hit_modeY':-0.5, 'hit_avgX':0.112, 'hit_avgY':-0.442})
+    result = api._api_game_registerStats({'user_id':2, 'game_id':0, 'swing_count':139, 'swing_hits':83, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':19})
     assert result == {'success':True}
 
-    result = api._api_game_registerStats({'user_id':1, 'game_id':1, 'swing_count':161, 'swing_hits':101, 'swing_min':9, 'swing_max':19, 'swing_avg':11.767, 'hit_modeX':-0.5, 'hit_modeY':0.0, 'hit_avgX':-0.398, 'hit_avgY':0.042})
+    result = api._api_game_registerStats({'user_id':1, 'game_id':1, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26})
     assert result == {'success':True}
 
     result = api._api_game_stats({'user_id':1})
-    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_min':10, 'swing_max':20, 'swing_avg':13.467, 'hit_modeX':0.5, 'hit_modeY':0.0, 'hit_avgX':0.412, 'hit_avgY':-0.142},
-                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_min':9, 'swing_max':19, 'swing_avg':11.767, 'hit_modeX':-0.5, 'hit_modeY':0.0, 'hit_avgX':-0.398, 'hit_avgY':0.042}}
+    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
+                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26}}
     
     result = api._api_game_stats({'user_id':1, 'game_id':[0,1,2]})
-    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_min':10, 'swing_max':20, 'swing_avg':13.467, 'hit_modeX':0.5, 'hit_modeY':0.0, 'hit_avgX':0.412, 'hit_avgY':-0.142},
-                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_min':9, 'swing_max':19, 'swing_avg':11.767, 'hit_modeX':-0.5, 'hit_modeY':0.0, 'hit_avgX':-0.398, 'hit_avgY':0.042},
+    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
+                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26},
                       2:None}
 
     result = api._api_game_stats({'game_id':0, 'user_id':2})
-    assert result == {0:{'timestamp':0, 'swing_count':139, 'swing_hits':83, 'hit_percentage':0.5971223021582733, 'swing_min':11, 'swing_max':25, 'swing_avg':17.395, 'hit_modeX':0.0, 'hit_modeY':-0.5, 'hit_avgX':0.112, 'hit_avgY':-0.442}}
+    assert result == {0:{'timestamp':0, 'swing_count':139, 'swing_hits':83, 'hit_percentage':0.5971223021582733, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':19}}
