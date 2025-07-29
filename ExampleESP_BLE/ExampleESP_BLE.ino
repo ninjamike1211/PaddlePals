@@ -184,6 +184,29 @@ String currentTemperature = "";
 String latencyString = "";
 bool messageFinishedSending = false;
 
+// Seven-segment code
+// Update seven segment displays
+void updateSevenSegmentDisplays(int playerScore, int opponentScore) {
+  displayDigit(playerScore, segPins1);   // left digit
+  displayDigit(opponentScore, segPins2);  // right digit
+}
+
+// Clear seven segment displays
+void clearSevenSegmentDisplays() {
+  for (int i = 0; i < 7; i++) {
+    digitalWrite(segPins1[i], HIGH);  // HIGH = off for common anode
+    digitalWrite(segPins2[i], HIGH);
+  }
+}
+
+// Seven segment display logic
+void displayDigit(int digit, int segPins[]) {
+  // Go through table for the digit, turn segments on/off based on if they are 1 or 0
+  for (int i = 0; i < 7; i++) {
+    // If 1, set as low - else, set as high
+    digitalWrite(segPins[i], digitSegments[digit][i] ? LOW : HIGH);
+  }
+}
 
 //Setup callbacks onConnect and onDisconnect
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -200,21 +223,37 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 // Callback for when notifications are enabled/disabled
-class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    String uuid = pCharacteristic->getUUID().toString().c_str();
-    Serial.print("Write received on characteristic: ");
-    Serial.println(uuid);
-    
-    if (uuid == SCORE_CHAR_UUID) {
-      Serial.println("Score characteristic write detected - checking for notification enable");
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pChar) override {
+    String val = pChar->getValue();
+    Serial.print("Write received on ");
+    Serial.print(pChar->getUUID().toString().c_str());
+    Serial.print(": ");
+    Serial.println(val.c_str());
+
+    // Only respond to writes on the SCORE_CHAR_UUID
+    if (pChar->getUUID().toString() == SCORE_CHAR_UUID) {
+      if (val == "RESET") {
+        // 1) Reset your game state
+        pointsThisGame  = 0;
+        opponentPoints = 0;
+        // 2) Update the 7‑segment displays
+        updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
+        // 3) Notify the phone of the new score
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d,%d", pointsThisGame, opponentPoints);
+        scoreChar->setValue(buf);
+        scoreChar->notify();
+        Serial.println("Scores reset to 0,0");
+      }
     }
   }
-  
+
   void onNotify(BLECharacteristic* pCharacteristic) {
     Serial.println("Notification sent for characteristic: " + String(pCharacteristic->getUUID().toString().c_str()));
   }
 };
+
 
 // Code to calibrate gyro
 float gyroX_offset = 0.0;
@@ -330,7 +369,7 @@ void initBLECharacteristics(BLEService* service) {
   Serial.println("Creating score characteristic...");
   scoreChar = service->createCharacteristic(
     SCORE_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
   );
   
   if (scoreChar == nullptr) {
@@ -444,6 +483,164 @@ uint64_t getSafeMicros() {
   // Return this value
   return extendedMicros;
 }
+
+// Functions for algorithms and operations
+void incrementPoints() {
+  pointsThisGame++;
+}
+
+void clickHandler(Button2& btn) {
+  bool scoreChanged = false;
+
+  if (btn == buttonIncrement && pointsThisGame <= 15) {
+    pointsThisGame++;
+    Serial.println("Player score incremented");
+    scoreChanged = true;
+  }
+  else if (btn == buttonDecrement && opponentPoints <= 15) {
+    opponentPoints++;
+    Serial.println("Opponent score incremented");
+    scoreChanged = true;
+  }
+  else if (pointsThisGame + 1 > 15) {
+    Serial.println("Player Score is 15 - increment ignored");
+  }
+  else if (opponentPoints + 1 > 15) {
+    Serial.println("Opponent Score is 15 - increment ignored");
+  }
+
+  // Immediately update BLE if connected
+  if (deviceConnected) {
+    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints);
+    static char scoreArray[50];
+    scoreUpdate.toCharArray(scoreArray, 50);
+    
+    if (&scoreChar == nullptr) {
+      Serial.println("ERROR: scoreChar is NULL");
+    } else {
+      scoreChar->setValue(scoreArray);
+      scoreChar->notify();
+    }
+  }
+
+  // Update seven-segment displays if score changed
+  if (scoreChanged) {
+    updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
+  }
+}
+
+float checkMaxSwingSpeed(float swingSpeed) {
+  if (swingSpeed > currentMaxSwingSpeed) {
+    currentMaxSwingSpeed = swingSpeed;
+  }
+  return currentMaxSwingSpeed;
+}
+
+int calculateTotalPointsAllTime(int pastNumberOfPoints) {
+    pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
+    return pastNumberOfPoints;
+}
+
+bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
+    if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
+        return true;
+    }
+    return false;
+}
+
+float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
+  if (numberOfGames == 0) return 0.0;
+  float averagePoints = (float)totalNumberOfPoints / numberOfGames;
+  return averagePoints;
+}
+
+float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, bool useBias) {
+  // Assume "r" - or the distance to the rotation center - is 10 cm.
+  float r = 0.10;
+
+  // Calculate magnitude of the total angular velocity
+  float angVelocity;
+
+  if (useBias) {
+    // Bias towards the x direction, since given the orientation and forehand/backhand, moving moreso on x axis
+    angVelocity = sqrt(1.0 * pow(xVelocity, 2) + 0.3 * pow(yVelocity, 2) + 0.4 * pow(zVelocity, 2));
+  }
+  else {
+    angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
+  }
+
+  // Calculate final swing speed
+  float finalSwingSpeed = angVelocity * r;
+
+  return finalSwingSpeed;
+}
+
+float calculateForce(int analogValue) {
+  // Convert ADC to voltage (assuming ESP32 12-bit ADC and 3.3V)
+  float voltage = analogValue * (3.3 / 4095.0);
+
+  // Avoid divide-by-zero errors
+  if (voltage <= 0.01) return 0;
+
+  // Calculate resistance of the FSR
+  const float R_FIXED = 10000.0;  // 10k Ohm resistor
+  float resistance = (3.3 - voltage) * R_FIXED / voltage;
+
+  // From datasheet: R = 153.18 / Force
+  // Use approximate equation F = K/R due to linear relationship in log-log graph from data
+  // Technically it's more like F = (R / 153.18)^(-1.43), but this is approximately close enough.
+  // F is in Kg
+  float force = 153.18 / resistance;  // in kg (approximate)
+
+  // Convert to grams
+  return force * 1000.0;
+}
+
+void updateQuadrantHits() {
+  int analogValues[4] = {
+    analogRead(fsr_1_pin),
+    analogRead(fsr_2_pin),
+    analogRead(fsr_3_pin),
+    analogRead(fsr_4_pin)
+  };
+
+  float forces[4];
+  for (int i = 0; i < 4; i++) {
+    forces[i] = calculateForce(analogValues[i]);
+  }
+
+  // Find max force and index
+  int maxIndex = 0;
+  float maxForce = forces[0];
+  for (int i = 1; i < 4; i++) {
+    if (forces[i] > maxForce) {
+      maxForce = forces[i];
+      maxIndex = i;
+    }
+  }
+
+  // Only count hits above noise threshold
+  const float HIT_THRESHOLD_GRAMS = 100.0;  // adjust as needed
+  if (maxForce >= HIT_THRESHOLD_GRAMS) {
+    quadrantHits[maxIndex]++;
+
+    // Format BLE message
+    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + ",Q2 Hits: " + String(quadrantHits[1]) +
+                        ",Q3 Hits: " + String(quadrantHits[2]) + ",Q4 Hits: " + String(quadrantHits[3]);
+
+    Serial.println(hitSummary);
+    
+    // Send hit summary over BLE characteristic
+    static char hitArray[100];
+    hitSummary.toCharArray(hitArray, 100);
+
+    if (hitSummaryChar != nullptr) {
+      hitSummaryChar->setValue(hitArray);
+      hitSummaryChar->notify();
+    }
+  }
+}
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -692,187 +889,5 @@ void loop() {
     static bool sentInitialScore = false;
     connectionTime = 0;
     sentInitialScore = false;
-  }
-}
-
-
-// Functions for algorithms and operations
-
-void incrementPoints() {
-  pointsThisGame++;
-}
-
-void clickHandler(Button2& btn) {
-  bool scoreChanged = false;
-
-  if (btn == buttonIncrement && pointsThisGame <= 15) {
-    pointsThisGame++;
-    Serial.println("Player score incremented");
-    scoreChanged = true;
-  }
-  else if (btn == buttonDecrement && opponentPoints <= 15) {
-    opponentPoints++;
-    Serial.println("Opponent score incremented");
-    scoreChanged = true;
-  }
-  else if (pointsThisGame + 1 > 15) {
-    Serial.println("Player Score is 15 - increment ignored");
-  }
-  else if (opponentPoints + 1 > 15) {
-    Serial.println("Opponent Score is 15 - increment ignored");
-  }
-
-  // Immediately update BLE if connected
-  if (deviceConnected) {
-    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints);
-    static char scoreArray[50];
-    scoreUpdate.toCharArray(scoreArray, 50);
-    
-    if (&scoreChar == nullptr) {
-      Serial.println("ERROR: scoreChar is NULL");
-    } else {
-      scoreChar->setValue(scoreArray);
-      scoreChar->notify();
-    }
-  }
-
-  // Update seven-segment displays if score changed
-  if (scoreChanged) {
-    updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
-  }
-}
-
-float checkMaxSwingSpeed(float swingSpeed) {
-  if (swingSpeed > currentMaxSwingSpeed) {
-    currentMaxSwingSpeed = swingSpeed;
-  }
-  return currentMaxSwingSpeed;
-}
-
-int calculateTotalPointsAllTime(int pastNumberOfPoints) {
-    pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
-    return pastNumberOfPoints;
-}
-
-bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
-    if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
-        return true;
-    }
-    return false;
-}
-
-float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
-  if (numberOfGames == 0) return 0.0;
-  float averagePoints = (float)totalNumberOfPoints / numberOfGames;
-  return averagePoints;
-}
-
-float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, bool useBias) {
-  // Assume "r" - or the distance to the rotation center - is 10 cm.
-  float r = 0.10;
-
-  // Calculate magnitude of the total angular velocity
-  float angVelocity;
-
-  if (useBias) {
-    // Bias towards the x direction, since given the orientation and forehand/backhand, moving moreso on x axis
-    angVelocity = sqrt(1.0 * pow(xVelocity, 2) + 0.3 * pow(yVelocity, 2) + 0.4 * pow(zVelocity, 2));
-  }
-  else {
-    angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
-  }
-
-  // Calculate final swing speed
-  float finalSwingSpeed = angVelocity * r;
-
-  return finalSwingSpeed;
-}
-
-float calculateForce(int analogValue) {
-  // Convert ADC to voltage (assuming ESP32 12-bit ADC and 3.3V)
-  float voltage = analogValue * (3.3 / 4095.0);
-
-  // Avoid divide-by-zero errors
-  if (voltage <= 0.01) return 0;
-
-  // Calculate resistance of the FSR
-  const float R_FIXED = 10000.0;  // 10k Ohm resistor
-  float resistance = (3.3 - voltage) * R_FIXED / voltage;
-
-  // From datasheet: R = 153.18 / Force
-  // Use approximate equation F = K/R due to linear relationship in log-log graph from data
-  // Technically it's more like F = (R / 153.18)^(-1.43), but this is approximately close enough.
-  // F is in Kg
-  float force = 153.18 / resistance;  // in kg (approximate)
-
-  // Convert to grams
-  return force * 1000.0;
-}
-
-void updateQuadrantHits() {
-  int analogValues[4] = {
-    analogRead(fsr_1_pin),
-    analogRead(fsr_2_pin),
-    analogRead(fsr_3_pin),
-    analogRead(fsr_4_pin)
-  };
-
-  float forces[4];
-  for (int i = 0; i < 4; i++) {
-    forces[i] = calculateForce(analogValues[i]);
-  }
-
-  // Find max force and index
-  int maxIndex = 0;
-  float maxForce = forces[0];
-  for (int i = 1; i < 4; i++) {
-    if (forces[i] > maxForce) {
-      maxForce = forces[i];
-      maxIndex = i;
-    }
-  }
-
-  // Only count hits above noise threshold
-  const float HIT_THRESHOLD_GRAMS = 100.0;  // adjust as needed
-  if (maxForce >= HIT_THRESHOLD_GRAMS) {
-    quadrantHits[maxIndex]++;
-
-    // Format BLE message
-    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + ",Q2 Hits: " + String(quadrantHits[1]) +
-                        ",Q3 Hits: " + String(quadrantHits[2]) + ",Q4 Hits: " + String(quadrantHits[3]);
-
-    Serial.println(hitSummary);
-    
-    // Send hit summary over BLE characteristic
-    static char hitArray[100];
-    hitSummary.toCharArray(hitArray, 100);
-
-    if (hitSummaryChar != nullptr) {
-      hitSummaryChar->setValue(hitArray);
-      hitSummaryChar->notify();
-    }
-  }
-}
-
-// Update seven segment displays
-void updateSevenSegmentDisplays(int playerScore, int opponentScore) {
-  displayDigit(playerScore, segPins1);   // left digit
-  displayDigit(opponentScore, segPins2);  // right digit
-}
-
-// Clear seven segment displays
-void clearSevenSegmentDisplays() {
-  for (int i = 0; i < 7; i++) {
-    digitalWrite(segPins1[i], HIGH);  // HIGH = off for common anode
-    digitalWrite(segPins2[i], HIGH);
-  }
-}
-
-// Seven segment display logic
-void displayDigit(int digit, int segPins[]) {
-  // Go through table for the digit, turn segments on/off based on if they are 1 or 0
-  for (int i = 0; i < 7; i++) {
-    // If 1, set as low - else, set as high
-    digitalWrite(segPins[i], digitSegments[digit][i] ? LOW : HIGH);
   }
 }
