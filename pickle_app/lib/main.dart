@@ -46,11 +46,11 @@ class APIRequests {
 
     //create the response using http.post
     final response = await http.post(
-      Uri.parse('$url$endpoint'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: json.encode(u_id)).timeout(const Duration(seconds:10));
+        Uri.parse('$url$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(u_id)).timeout(const Duration(seconds:10));
 
     print('Status ${response.statusCode}');
 
@@ -530,7 +530,8 @@ class BleFunctionality{
   DiscoveredDevice? connectedDevice; //device that was connected to
 
   //notify the game page when new data is received
-  final ValueNotifier<String?> latestData = ValueNotifier(null);
+  final ValueNotifier<String?> latestScoreData = ValueNotifier(null);
+  final ValueNotifier<String?> latestSwingData = ValueNotifier(null);
 
   BleFunctionality();
 
@@ -619,9 +620,9 @@ class BleFunctionality{
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
       print("Received from BLE: $value");
-      latestData.value = value; //update latestData value
+      latestScoreData.value = value; //update latestData value
     }, onError: (error) {
-      latestData.value = null;
+      latestScoreData.value = null;
       print("Error subscribing to notifications: $error");
     });
   }
@@ -642,9 +643,9 @@ class BleFunctionality{
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
       print("Received from BLE: $value");
-      latestData.value = value; //update latestData value
+      latestSwingData.value = value; //update latestData value
     }, onError: (error) {
-      latestData.value = null;
+      latestSwingData.value = null;
       print("Error subscribing to notifications: $error");
     });
   }
@@ -670,8 +671,22 @@ class Game {
   String winner = "";
   String gameType = "Standard";
   int startTime = 0;
-  double maxSwingSpeed = 0;
-  int quadrantsHit = 0;
+
+  int swingCount = 0;
+  int swingHits = 0;
+  double swingMax = 0;
+
+
+
+  void newSwing(double swingSpeed){
+    swingCount+=1;
+    print("swing count $swingCount");
+
+    if(swingCount == 0 || swingSpeed > swingMax){
+      swingMax = swingSpeed;
+      print("new max speed: $swingMax");
+    }
+  }
 
   void incMyScore(){
     myScore += 1;
@@ -682,7 +697,6 @@ class Game {
   }
 
   ///true if a player has a score of at least 11 and is winning by at least 2
-  ///TODO decide how swing speed and hit location win
   bool checkForWinner(){
     if (myScore >= 11 && opponentScore <= myScore - 2){
       inProgress = false;
@@ -733,15 +747,10 @@ class Game {
   }
 
   ///convert the String gameType to a int value
+  //are going to keep one standard game
   int gameTypeToInt(){
     if (gameType == "Standard"){
       return 0;
-    }
-    else if(gameType == "Swing Speed"){
-      return 1;
-    }
-    else if(gameType == "Hit Location"){
-      return 2;
     }
     else{
       print("invalid game type");
@@ -1000,8 +1009,7 @@ class _GamePageState extends State<GamePage> {
   bool isLoading = true;
   final internetConnection = ConnectivityCheck(); //check for internet connection
   late VoidCallback _bleDataListener; //function for receiving new data from ble
-  List<String> gameTypeOptions = ['Standard', 'Swing Speed', 'Hit Location'];
-  String? selectedGameType;
+  late VoidCallback _bleSwingSpeedListener;
 
   ///check if the user has inputted an opponent and update game
   void loadOpponent(){
@@ -1017,27 +1025,17 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
-  ///check game status and type to determine how the page title should appear
+  ///check game status to determine how the page title should appear
   String getTitle(){
     String title = "";
     if (game.inProgress){
-      title = "Current";
+      title = "Current Game";
     }
     else if (game.isFinished){
-      title = "Finished";
+      title = "Finished Game";
     }
     else{
-      title = "Start";
-    }
-
-    if(game.gameType == "Standard"){
-      title += " a Standard Game";
-    }
-    else if(game.gameType == "Swing Speed"){
-      title += " a Swing Speed Game";
-    }
-    else if(game.gameType == "Hit Location"){
-      title += " a Hit Location Game";
+      title = "Start a Game";
     }
 
     return title;
@@ -1186,7 +1184,8 @@ class _GamePageState extends State<GamePage> {
   ///handle exiting page
   @override
   void dispose() {
-    myBLE.latestData.removeListener(_bleDataListener);
+    myBLE.latestScoreData.removeListener(_bleDataListener);
+    myBLE.latestSwingData.removeListener(_bleSwingSpeedListener);
     super.dispose();
   }
 
@@ -1200,10 +1199,11 @@ class _GamePageState extends State<GamePage> {
     //listen for a new ble data value, update game and ui
     _bleDataListener = () {
       if (!mounted) return;
-      final data = myBLE.latestData.value;
+      final data = myBLE.latestScoreData.value;
       if (data != null) { //new data has been received and a game has been started
         if(game.inProgress){
           print("Game in progress: ${game.inProgress}");
+          //TODO change for new score formatting
           setState(() {
             print("New data in GamePage: $data");
             incMyScore();
@@ -1221,7 +1221,31 @@ class _GamePageState extends State<GamePage> {
     };
 
     //use the listener function to handle new ble data
-    myBLE.latestData.addListener(_bleDataListener);
+    myBLE.latestScoreData.addListener(_bleDataListener);
+    _bleSwingSpeedListener = () {
+      if (!mounted) return;
+      final data = myBLE.latestSwingData.value;
+      if (data != null) { //new data has been received and a game has been started
+        if (game.inProgress) {
+          print("Game in progress: ${game.inProgress}");
+          setState(() {
+            print("New data in GamePage: $data");
+            try {
+              //convert received string to double
+              String dataNumbersParse = data.replaceAll(" m/s", "");
+              double dataNum = double.parse(dataNumbersParse);
+              game.newSwing(dataNum);
+            } catch (e) {
+              print("error converting swing data to double: $e");
+            }
+          });
+        } else {
+          print("swing will not count until game is started");
+        }
+      }
+    };
+
+    myBLE.latestSwingData.addListener(_bleSwingSpeedListener);
 
     //when internet connection is restored, immediately send cached games to database
     internetConnection.connectionRestoreListener((){
@@ -1313,24 +1337,6 @@ class _GamePageState extends State<GamePage> {
             ],
           ),
           Text("Game type: ${game.gameType}"),
-          SizedBox(height: 16,),
-          DropdownButton<String>(
-            hint: Text("Select a game type"),
-            value: selectedGameType,
-            onChanged: (String? newValue){
-              setState(() {
-                selectedGameType = newValue;
-                game.gameType = selectedGameType ?? "Standard";
-              });
-            },
-            items: gameTypeOptions.map((String value) {
-              return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value)
-              );
-            }).toList(),
-          ),
-          SizedBox(height: 16,),
           ElevatedButton(
               onPressed: startStandardGame,
               child: Text("Start Game")
@@ -1415,8 +1421,8 @@ class _SocialPageState extends State<SocialPage> {
 
   ///give a friend as an opponent and update user
   void startGameWithPal(String palName){
-      print("Start game with $palName");
-      context.read<User>().setOpponent(palName);
+    print("Start game with $palName");
+    context.read<User>().setOpponent(palName);
   }
 
   ///show a popup to start a game with a friend, delete a friend, or cancel
@@ -1441,11 +1447,11 @@ class _SocialPageState extends State<SocialPage> {
                   child: Text("Delete")
               ),
               TextButton(
-                  onPressed: () {
-                    startGameWithPal(palName);
-                    Navigator.of(context).pop();
-                  },
-                  child: Text("Start Game"),
+                onPressed: () {
+                  startGameWithPal(palName);
+                  Navigator.of(context).pop();
+                },
+                child: Text("Start Game"),
               )
             ],
           );
@@ -1499,12 +1505,12 @@ class _SocialPageState extends State<SocialPage> {
                       subtitle: Text("Winning %: ${pal['winRate'].toStringAsFixed(3)} Games Played: ${pal['gamesPlayed']}"),
                       onTap: () => showOptions(pal['username']), //show dialog with start game and delete options
                     );
-                }
+                  }
               ),
             )
           ],
         ),
-        ),
+      ),
     );
   }
 }
@@ -1565,30 +1571,30 @@ class _HistoryPageState extends State<HistoryPage> {
       List<int> tempIds = gameIds ?? [];
       //loop through each game
       for (var game in tempIds){
-          //get the game information
-          Map<String, dynamic> gameMap = await api.getGameInfo(game);
-          print(gameMap);
-          String gameIdString = game.toString();
-          //use the winner id to find the username of the winner
-          var winnerId = gameMap[gameIdString]?["winner_id"];
-          Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
-          String winnerIdString =  winnerId.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
-          //check if the user is the winner
-          if (winnerName == username){
-            //the user is the winner so save id
-            tempWinIds.add(game);
-            //get the loser id and username
-            int loserID = gameMap[gameIdString]['loser_id'];
-            Map<String, dynamic> loserMap = await api.getUsername(loserID);
-            String loserIdString = loserID.toString();
-            String loserName = loserMap[loserIdString]['username'];
-            //change loser id locally to be better for ui
-            gameMap['loser_id'] = loserName;
-            //add date_time to format unix timestamp better for ui
-            gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
-            winsList.add(gameMap);
-          }
+        //get the game information
+        Map<String, dynamic> gameMap = await api.getGameInfo(game);
+        print(gameMap);
+        String gameIdString = game.toString();
+        //use the winner id to find the username of the winner
+        var winnerId = gameMap[gameIdString]?["winner_id"];
+        Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
+        String winnerIdString =  winnerId.toString();
+        String winnerName = winnerMap[winnerIdString]['username'];
+        //check if the user is the winner
+        if (winnerName == username){
+          //the user is the winner so save id
+          tempWinIds.add(game);
+          //get the loser id and username
+          int loserID = gameMap[gameIdString]['loser_id'];
+          Map<String, dynamic> loserMap = await api.getUsername(loserID);
+          String loserIdString = loserID.toString();
+          String loserName = loserMap[loserIdString]['username'];
+          //change loser id locally to be better for ui
+          gameMap['loser_id'] = loserName;
+          //add date_time to format unix timestamp better for ui
+          gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
+          winsList.add(gameMap);
+        }
       }
     }
     //set winIds
@@ -1709,15 +1715,15 @@ class _HistoryPageState extends State<HistoryPage> {
     return Container(
       color: Theme.of(context).cardColor,
       child: ListView.builder(
-        itemCount: winsList.length,
-        itemBuilder: (context, index) {
-          final win = winsList[index];
-          print(win);
-          return ListTile(
-            title: Text("${win['date_time']} Opponent: ${win['loser_id']}"),
-            subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
-          );
-        }
+          itemCount: winsList.length,
+          itemBuilder: (context, index) {
+            final win = winsList[index];
+            print(win);
+            return ListTile(
+              title: Text("${win['date_time']} Opponent: ${win['loser_id']}"),
+              subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
+            );
+          }
       ),
     );
   }
@@ -1826,44 +1832,44 @@ class _HistoryPageState extends State<HistoryPage> {
                 }
             ),
             DropdownButton<String>(
-                hint: Text("Select a stat to view"),
-                value: selectedStat,
-                onChanged: (String? newValue){
-                  setState(() {
-                    selectedStat = newValue;
-                  });
-                },
-                items: statsToView.map((String value) {
-                  return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value)
-                  );
-                }).toList(),
+              hint: Text("Select a stat to view"),
+              value: selectedStat,
+              onChanged: (String? newValue){
+                setState(() {
+                  selectedStat = newValue;
+                });
+              },
+              items: statsToView.map((String value) {
+                return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value)
+                );
+              }).toList(),
             ),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _getSelectedHistory(context.read<User>().username),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) { //get selected data
-                      return CircularProgressIndicator();
-                    } else if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    } else { //display corresponding widget with loaded data
-                      final data = snapshot.data!;
-                      print(data);
-                      switch(selectedStat){
-                        case "Wins":
-                          return winsListWidget(data);
-                        case "Losses":
-                          return lossesListWidget(data);
-                        case "Opponents":
-                          return oppsListWidget(data);
-                        case "Swing Speeds":
-                          return swingSpeedWidget(data);
-                        default:
-                          return errorWidget();
-                      }
+                future: _getSelectedHistory(context.read<User>().username),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) { //get selected data
+                    return CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  } else { //display corresponding widget with loaded data
+                    final data = snapshot.data!;
+                    print(data);
+                    switch(selectedStat){
+                      case "Wins":
+                        return winsListWidget(data);
+                      case "Losses":
+                        return lossesListWidget(data);
+                      case "Opponents":
+                        return oppsListWidget(data);
+                      case "Swing Speeds":
+                        return swingSpeedWidget(data);
+                      default:
+                        return errorWidget();
                     }
+                  }
                 },
               ),
             )
@@ -2004,11 +2010,11 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           children: [
             ValueListenableBuilder(
-              valueListenable: internetConnection.isOnline,
-              builder: (context, online, _){
-                //only display message when offline
-                return online ? Text("") : Text("Offline");
-              }
+                valueListenable: internetConnection.isOnline,
+                builder: (context, online, _){
+                  //only display message when offline
+                  return online ? Text("") : Text("Offline");
+                }
             ),
             Container(
               width: 100,
