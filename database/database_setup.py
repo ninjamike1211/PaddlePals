@@ -35,11 +35,11 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
 
 if __name__ == '__main__':
     users = {
-        'ninjamike1211': 'passUserID1',
-        'aje0714': 'passUserID2',
-        'BOT-Lee': 'passUserID3',
-        'jpk102pitt': 'passUserID4',
-        'testUser': 'testPassword',
+        'ninjamike1211': 'passUser_ID1',
+        'aje0714': 'passUser_ID2',
+        'BOT-Lee': 'passUser_ID3',
+        'jpk102pitt': 'passUser_ID4',
+        'testUser': 'test_USER_1234',
     }
     gen_games = 200
 
