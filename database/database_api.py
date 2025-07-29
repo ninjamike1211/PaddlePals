@@ -686,8 +686,8 @@ class restAPI:
 
 
     def _api_game_registerStats(self, params: dict):
-        # if any(key not in params for key in ('timestamp', 'game_type', 'winner_id', 'loser_id', 'winner_points', 'loser_points')):
-        #     print(f'Invalid parameters for POST pickle/game: {params}')
+        if any(key not in params for key in ('user_id', 'game_id', 'swing_count', 'swing_hits', 'swing_max', 'Q1_hits', 'Q2_hits', 'Q3_hits', 'Q4_hits')):
+            print(f'Invalid parameters for pickle/game/registerStats: {params}')
 
         user_id = int(params['user_id'])
         game_id = int(params['game_id'])
@@ -702,16 +702,17 @@ class restAPI:
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
-        # if not self._is_user_valid(loser_id):
-        #     raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
+        self._dbCursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
+        if not self._dbCursor.fetchone():
+            raise self.APIError(f'Game ID {game_id} not found in database', 404)
+
+        if Q1_hits + Q2_hits + Q3_hits + Q4_hits != swing_hits:
+            raise self.APIError(f'Individual quadrent hits ({Q1_hits},{Q2_hits},{Q3_hits},{Q4_hits})don\'t add to the total hits ({swing_hits})', 400)
 
         self._dbCursor.execute(
             "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_id, game_id, swing_count, swing_hits, swing_max, Q1_hits, Q2_hits, Q3_hits, Q4_hits))
         self._database.commit()
-
-        # self.updateUserGameStats(winner_id)
-        # self.updateUserGameStats(loser_id)
 
         return {'success':True}
 
