@@ -835,6 +835,7 @@ void updateQuadrantHits() {
     if (hitSummaryChar != nullptr) {
       hitSummaryChar->setValue(hitArray);
       hitSummaryChar->notify();
+    }
   }
 }
 
@@ -860,4 +861,3 @@ void displayDigit(int digit, int segPins[]) {
     digitalWrite(segPins[i], digitSegments[digit][i] ? LOW : HIGH);
   }
 }
-
