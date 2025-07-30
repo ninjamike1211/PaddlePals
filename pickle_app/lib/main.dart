@@ -889,24 +889,19 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
   final TextEditingController _controller1 = TextEditingController();
   final TextEditingController _controller2 = TextEditingController();
 
-  //TODO add back create user on login page
+  ///create new user and log them in
   _createNewUser(String userName, String password) {
-    // final newUser = User(
-    //   username: newName,
-    //   gamesPlayed: 0,
-    //   gamesWon: 0,
-    //   avgScore: 0
-    // );
-
-    // usersList.add(newUser);
 
     api.postNewUserRequest(userName, password);
+
+    _login(userName, password);
   }
 
   ///check for valid username and password with database then go to home
   _login(String userName, String password) async {
     String apiKey = await api.authorizeLogin(userName, password);
 
+    print(apiKey);
     print("LOGIN UN: $userName");
 
     if(apiKey != ""){
@@ -939,13 +934,25 @@ class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: (){
-              _login(_controller1.text, _controller2.text);
-            },
-            child: const Text('Login'),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: (){
+                  _login(_controller1.text, _controller2.text);
+                },
+                child: Text('Login'),
+
+              ),
+              SizedBox(width: 16,),
+              ElevatedButton(
+                  onPressed: (){
+                    _createNewUser(_controller1.text, _controller2.text);
+                  },
+                  child: Text("Create New User")
+              )
+            ],
           )
-        ],
+        ]
       ),
     );
   }
@@ -1639,7 +1646,7 @@ class HistoryPage extends StatefulWidget{
 
 class _HistoryPageState extends State<HistoryPage> {
   //options in dropdown
-  List<String> statsToView = ["Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
+  List<String> statsToView = ["Wins", "Losses", "Opponents", "Swing Speeds", "Hit Locations"];
   //option selected in dropdown
   String? selectedStat;
   //list of retrieved game ids
@@ -1889,8 +1896,8 @@ class _HistoryPageState extends State<HistoryPage> {
           itemBuilder: (context, index) {
             final swing = swingsList[index];
             return ListTile(
-              title: Text("${swing['date_time']} (unit)"),
-              subtitle: Text("Average: ${swing[gameIds?[index].toString()]['swing_avg']} Min: ${swing[gameIds?[index].toString()]['swing_min']} Max: ${swing[gameIds?[index].toString()]['swing_max']}"),
+              title: Text("${swing['date_time']}"),
+              subtitle: Text("Max Speed: ${swing[gameIds?[index].toString()]['swing_max']}m/s Swing Count: ${swing[gameIds?[index].toString()]['swing_count']}"),
             );
           }
       ),
