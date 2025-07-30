@@ -575,6 +575,7 @@ class BleFunctionality{
   //notify the game page when new data is received
   final ValueNotifier<String?> latestScoreData = ValueNotifier(null);
   final ValueNotifier<String?> latestSwingData = ValueNotifier(null);
+  final ValueNotifier<String?> latestHitData = ValueNotifier(null);
 
   BleFunctionality();
 
@@ -646,7 +647,6 @@ class BleFunctionality{
   }
 
   ///subscribe to characteristic with a connected device and necessary uuids
-  //TODO edit for use with other characteristics, likely make two other functions
   void readScoreLiveFromDevice({
     required DiscoveredDevice connectedDevice,
   }){
@@ -654,7 +654,7 @@ class BleFunctionality{
     final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
     final scoreCharUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495");
 
-    print("in readLiveFromDevice");
+    print("in readScoreLiveFromDevice");
     final characteristic = QualifiedCharacteristic(
         characteristicId: scoreCharUuid,
         serviceId: serviceUuid,
@@ -677,7 +677,7 @@ class BleFunctionality{
     final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
     final maxSwingCharUuid = Uuid.parse("8b2c1a45-7d3e-4f89-a2b1-c5d6e7f8a9b0");
 
-    print("in readLiveFromDevice");
+    print("in readSwingLiveFromDevice");
     final characteristic = QualifiedCharacteristic(
         characteristicId: maxSwingCharUuid,
         serviceId: serviceUuid,
@@ -689,6 +689,29 @@ class BleFunctionality{
       latestSwingData.value = value; //update latestData value
     }, onError: (error) {
       latestSwingData.value = null;
+      print("Error subscribing to notifications: $error");
+    });
+  }
+
+  void readHitsLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+  }){
+
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final hitCharUuid = Uuid.parse("9c3d2b56-8e4f-5a90-b3c2-d6e7f8a9b0c1");
+
+    print("in readHitsLiveFromDevice");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: hitCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+      final value = utf8.decode(data); //get decoded value
+      print("Received from BLE: $value");
+      latestHitData.value = value; //update latestData value
+    }, onError: (error) {
+      latestHitData.value = null;
       print("Error subscribing to notifications: $error");
     });
   }
@@ -738,7 +761,10 @@ class Game {
   int swingCount = 0;
   int swingHits = 0;
   double swingMax = 0;
-
+  int q1Hits = 0;
+  int q2Hits = 0;
+  int q3Hits = 0;
+  int q4Hits = 0;
 
 
   void newSwing(double swingSpeed){
@@ -749,6 +775,16 @@ class Game {
       swingMax = swingSpeed;
       print("new max speed: $swingMax");
     }
+  }
+
+  void newHit(int q1, int q2, int q3, int q4){
+    print("new hit");
+    swingHits += 1;
+
+    q1Hits = q1;
+    q2Hits = q2;
+    q3Hits = q3;
+    q4Hits = q4;
   }
 
   void incMyScore(){
@@ -807,6 +843,14 @@ class Game {
     playingWithFriend = false;
     opponentName = "Opponent";
     winner = "";
+
+    swingCount = 0;
+    swingHits = 0;
+    swingMax = 0;
+    q1Hits = 0;
+    q2Hits = 0;
+    q3Hits = 0;
+    q4Hits = 0;
   }
 
   ///convert the String gameType to a int value
@@ -1078,8 +1122,9 @@ class _GamePageState extends State<GamePage> {
   var game = Game();
   bool isLoading = true;
   final internetConnection = ConnectivityCheck(); //check for internet connection
-  late VoidCallback _bleDataListener; //function for receiving new data from ble
-  late VoidCallback _bleSwingSpeedListener;
+  late VoidCallback _bleDataListener; //function for receiving score data from ble
+  late VoidCallback _bleSwingSpeedListener; //receive swing speed data from ble
+  late VoidCallback _bleHitListener;
 
   ///check if the user has inputted an opponent and update game
   void loadOpponent(){
@@ -1269,6 +1314,7 @@ class _GamePageState extends State<GamePage> {
   void dispose() {
     myBLE.latestScoreData.removeListener(_bleDataListener);
     myBLE.latestSwingData.removeListener(_bleSwingSpeedListener);
+    myBLE.latestHitData.removeListener(_bleHitListener);
     super.dispose();
   }
 
@@ -1343,6 +1389,7 @@ class _GamePageState extends State<GamePage> {
 
     //use the listener function to handle new ble data
     myBLE.latestScoreData.addListener(_bleDataListener);
+
     _bleSwingSpeedListener = () {
       if (!mounted) return;
       final data = myBLE.latestSwingData.value;
@@ -1368,6 +1415,51 @@ class _GamePageState extends State<GamePage> {
 
     myBLE.latestSwingData.addListener(_bleSwingSpeedListener);
 
+    int tempQ1 = 0;
+    int tempQ2 = 0;
+    int tempQ3 = 0;
+    int tempQ4 = 0;
+    //TODO test hit functions
+    _bleHitListener = () {
+      if (!mounted) return;
+      final data = myBLE.latestHitData.value;
+      if (data != null) { //new data has been received and a game has been started
+        if (game.inProgress) {
+          int q1Idx = data.indexOf(":");
+          int q2Idx = data.indexOf(",Q2 Hits");
+          int q3Idx = data.indexOf(",Q3 Hits");
+          int q4Idx = data.lastIndexOf(":");
+          int length = data.length;
+          try{
+            tempQ1 = int.parse(data.substring(q1Idx + 2, q2Idx));
+          } catch(e){
+            print("error parsing q1 hits $e");
+          }
+          try{
+            tempQ2 = int.parse(data.substring(q2Idx + 10, q3Idx));
+          }catch(e){
+            print("error parsing q2 hits $e");
+          }
+          try{
+            tempQ3 = int.parse(data.substring(q3Idx + 10, q4Idx));
+          }catch(e){
+            print("error parsing q3 hits $e");
+          }
+          try{
+            tempQ4 = int.parse(data.substring(q4Idx + 10, length));
+          }catch(e){
+            print("error parsing q4 hits $e");
+          }
+          setState(() {
+            game.newHit(tempQ1, tempQ2, tempQ3, tempQ4);
+          });
+        } else {
+          print("hit will not count until game is started");
+        }
+      }
+    };
+
+    myBLE.latestHitData.addListener(_bleHitListener);
     //when internet connection is restored, immediately send cached games to database
     internetConnection.connectionRestoreListener((){
       print("Internet connection restored. Sending cached games");
@@ -1810,8 +1902,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return opponentsMaps;
   }
 
-  //TODO finish stat history implementation
-  //similar layout to others, this function should be done, but needs tested
+  //TODO test hit history implementation
   Future<List<Map<String, dynamic>>> getSwingSpeeds(String username) async {
     List<Map<String, dynamic>> swingsList = [];
 
@@ -1827,6 +1918,23 @@ class _HistoryPageState extends State<HistoryPage> {
     }
 
     return swingsList;
+  }
+
+  Future<List<Map<String, dynamic>>> getHitLocations(String username) async {
+    List<Map<String, dynamic>> hitsList = [];
+
+    if (gameIds != null){
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds){
+        Map<String, dynamic> gameStatMap = await api.getGameStats(game, username);
+        Map<String, dynamic> gameInfoMap = await api.getGameInfo(game);
+        String gameIdString = game.toString();
+        gameStatMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameInfoMap[gameIdString]['timestamp'] * 1000);
+        hitsList.add(gameStatMap);
+      }
+    }
+
+    return hitsList;
   }
 
   ///display the list of wins
@@ -1904,6 +2012,22 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  Widget hitLocationWidget(List<Map<String, dynamic>> hitsList) {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: ListView.builder(
+          itemCount: hitsList.length,
+          itemBuilder: (context, index) {
+            final hit = hitsList[index];
+            return ListTile(
+              title: Text("${hit['date_time']} Hit %: ${hit[gameIds?[index].toString()]['hit_percentage']}"),
+              subtitle: Text("Q1: ${hit[gameIds?[index].toString()]['Q1_hits']} Q2: ${hit[gameIds?[index].toString()]['Q2_hits']} Q3: ${hit[gameIds?[index].toString()]['Q3_hits']} Q4: ${hit[gameIds?[index].toString()]['Q4_hits']}"),
+            );
+          }
+      ),
+    );
+  }
+
   ///display error message
   Widget errorWidget() => Center(child: Text('Choose a Stat'));
 
@@ -1927,6 +2051,10 @@ class _HistoryPageState extends State<HistoryPage> {
     else if(selectedStat == "Swing Speeds"){
       final swings = await getSwingSpeeds(username);
       return swings;
+    }
+    else if(selectedStat == "Hit Locations"){
+      final hits = await getHitLocations(username);
+      return hits;
     }
     else{
       print("can't get value: ${selectedStat}");
@@ -1987,6 +2115,8 @@ class _HistoryPageState extends State<HistoryPage> {
                         return oppsListWidget(data);
                       case "Swing Speeds":
                         return swingSpeedWidget(data);
+                      case "Hit Locations":
+                        return hitLocationWidget(data);
                       default:
                         return errorWidget();
                     }
@@ -2090,6 +2220,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if(status){
         myBLE.readScoreLiveFromDevice(connectedDevice: device);
         myBLE.readSwingLiveFromDevice(connectedDevice: device);
+        myBLE.readHitsLiveFromDevice(connectedDevice: device);
       }
       else{
         print("Ble connection failed");
