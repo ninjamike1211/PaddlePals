@@ -693,6 +693,26 @@ class BleFunctionality{
     });
   }
 
+  void writeReset() async{
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final scoreCharUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495");
+
+    print("in writeReset");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: scoreCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice!.id);
+
+    //convert the reset message into bytes to be sent
+    String resetMessage = "RESET";
+    List<int> resetInBytes = resetMessage.codeUnits;
+
+    await flutterReactiveBle.writeCharacteristicWithoutResponse(
+        characteristic,
+        value: resetInBytes
+    );
+
+  }
   ///stop scanning when leaving profile page
   void stopScan() {
     scanSubscription.cancel();
@@ -1218,10 +1238,12 @@ class _GamePageState extends State<GamePage> {
       int gameID = gameIdMap['game_id'];
       String un = context.read<User>().username;
       api.registerStats(un, gameID, game.swingCount, game.swingHits, game.swingMax);
+      myBLE.writeReset();
       print("Online. Sending game to database $un");
     }
     else{
       //TODO test game stat caching, BLE disconnected with wifi(could be bc app is sent to background when setting airplane mode, can turn wifi mode off on esp)
+      //try just turning off wifi instead of full airplane mode
       cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax);
       print("Offline. Caching game data");
     }
