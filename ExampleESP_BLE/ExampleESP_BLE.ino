@@ -12,7 +12,6 @@
 
 // Linear Velocity to Angular Velocity:
 // https://math.libretexts.org/Bookshelves/Precalculus/Book%3A_Trigonometry_(Sundstrom_and_Schlicker)/01%3A_The_Trigonometric_Functions/1.04%3A_Velocity_and_Angular_Velocity
-// Magnitude of Angular Velocity:
 
 // Credit to Instructables and Arduino project hub for help with Seven-Segment:
 // https://www.instructables.com/7-Segment-Display-On-Arduino/
@@ -57,11 +56,11 @@
 #define seg2_b 17
 #define seg2_c 25
 #define seg2_d 26
-#define seg2_e 27
+#define seg2_e 34
 #define seg2_f 32
 #define seg2_g 33
 
-#define fsr_1_pin 34
+#define fsr_1_pin 27
 #define fsr_2_pin 35
 #define fsr_3_pin 32
 #define fsr_4_pin 33
@@ -131,6 +130,9 @@ const bool USE_DIRECTIONAL_BIAS = true;
 
 // Boolean to check if device is connected
 bool deviceConnected = false;
+
+// Boolean to check if game has started
+bool gameStarted = false;
 
 // Variable to store the points from Current Game
 int pointsThisGame = 0;
@@ -234,14 +236,18 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
     // Only respond to writes on the SCORE_CHAR_UUID
     if (pChar->getUUID().toString() == SCORE_CHAR_UUID) {
       if (val == "RESET") {
-        // 1) Reset your game state
+        // Reset game state
         pointsThisGame  = 0;
         opponentPoints = 0;
-        // 2) Update the 7‑segment displays
+        gameStarted = false;
+        clearSevenSegmentDisplays();
+
+        // Update the 7‑segment displays with 0s
         updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
-        // 3) Notify the phone of the new score
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d,%d", pointsThisGame, opponentPoints);
+
+        // Notify the phone of the new score
+        char buf[20];
+        snprintf(buf, sizeof(buf), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
         scoreChar->setValue(buf);
         scoreChar->notify();
         Serial.println("Scores reset to 0,0");
@@ -491,27 +497,34 @@ void incrementPoints() {
 
 void clickHandler(Button2& btn) {
   bool scoreChanged = false;
-
-  if (btn == buttonIncrement && pointsThisGame <= 15) {
+  // Start the game
+  if (btn == buttonIncrement && !gameStarted) {
+    gameStarted = true;
+    clearSevenSegmentDisplays();
+  }
+  else if (btn == buttonIncrement && pointsThisGame <= 15 && gameStarted) {
     pointsThisGame++;
     Serial.println("Player score incremented");
     scoreChanged = true;
   }
-  else if (btn == buttonDecrement && opponentPoints <= 15) {
+  else if (btn == buttonDecrement && opponentPoints <= 15 && gameStarted) {
     opponentPoints++;
     Serial.println("Opponent score incremented");
     scoreChanged = true;
   }
-  else if (pointsThisGame + 1 > 15) {
+  else if (pointsThisGame + 1 > 15 && gameStarted) {
     Serial.println("Player Score is 15 - increment ignored");
   }
-  else if (opponentPoints + 1 > 15) {
+  else if (opponentPoints + 1 > 15 && gameStarted) {
     Serial.println("Opponent Score is 15 - increment ignored");
+  }
+  else {
+    Serial.println("Game isn't started - hit the player score button!");
   }
 
   // Immediately update BLE if connected
   if (deviceConnected) {
-    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints);
+    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints) + "," + String(gameStarted);
     static char scoreArray[50];
     scoreUpdate.toCharArray(scoreArray, 50);
     
@@ -838,7 +851,7 @@ void loop() {
         // }
 
         // Send stats over in string format
-        pointsString = String(pointsThisGame) + "," + String(opponentPoints);
+        pointsString = String(pointsThisGame) + "," + String(opponentPoints) + "," + String(gameStarted);
         currentTemperature = String(temp.temperature, 1) + " Celsius";
         
         // After calculations, start the transmission timer
