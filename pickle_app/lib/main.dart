@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.24.241:80";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -1251,28 +1251,55 @@ class _GamePageState extends State<GamePage> {
 
     print("init game page");
     //listen for a new ble data value, update game and ui
+    int prevMyButtonScore = 0;
+    int prevOppButtonScore = 0;
     _bleDataListener = () {
       if (!mounted) return;
       final data = myBLE.latestScoreData.value;
       if (data != null) { //new data has been received and a game has been started
+        int commaIdx = data.indexOf(',');
+        int length = data.length;
+        String myButtonScoreChar = data.substring(0, commaIdx);
+        print("my score char $myButtonScoreChar");
+        String oppButtonScoreChar = data.substring(commaIdx + 1, length);
+        print("opp score char $oppButtonScoreChar");
+        int myButtonScore = 0;
+        int oppButtonScore = 0;
+        try{
+          myButtonScore = int.parse(myButtonScoreChar);
+        }catch(e){
+          print("error converting my button score to int $e");
+        }
+        try{
+          oppButtonScore = int.parse(oppButtonScoreChar);
+        }catch(e){
+          print("error converting opp button score to int $e");
+        }
+
         if(game.inProgress){
           print("Game in progress: ${game.inProgress}");
-          //TODO change for new score formatting
-          String myButtonScore = data[0];
-          setState(() {
-            print("New data in GamePage: $data");
-            incMyScore();
-          });
+          if(myButtonScore - 1!= prevMyButtonScore){ //MY SCORE BUTTON MUST BE START
+            setState(() {
+              print("New data in GamePage: $data");
+              incMyScore();
+              print("My score: ${game.myScore}");
+            });
+            prevMyButtonScore = myButtonScore - 1;
+          }
+          if(oppButtonScore != prevOppButtonScore){
+            setState(() {
+              print("New data in GamePage: $data");
+              incOppScore();
+              print("Opponent score: ${game.opponentScore}");
+            });
+            prevOppButtonScore = oppButtonScore;
+          }
+
         }
         else{
           startStandardGame();
         }
       }
-      //else {
-      //   setState(() {
-      //     game.myScore = -1;
-      //   });
-      // }
     };
 
     //use the listener function to handle new ble data
