@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.6.24.241:80";
+  final String url = "http://10.0.0.188:80";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -1279,14 +1279,17 @@ class _GamePageState extends State<GamePage> {
       if (!mounted) return;
       final data = myBLE.latestScoreData.value;
       if (data != null) { //new data has been received and a game has been started
-        int commaIdx = data.indexOf(',');
+        int comma1Idx = data.indexOf(',');
+        int comma2Idx = data.lastIndexOf(',');
         int length = data.length;
-        String myButtonScoreChar = data.substring(0, commaIdx);
+        String myButtonScoreChar = data.substring(0, comma1Idx);
         print("my score char $myButtonScoreChar");
-        String oppButtonScoreChar = data.substring(commaIdx + 1, length);
+        String oppButtonScoreChar = data.substring(comma1Idx + 1, comma2Idx);
         print("opp score char $oppButtonScoreChar");
+        String startButtonPressChar = data.substring(comma2Idx + 1, length);
         int myButtonScore = 0;
         int oppButtonScore = 0;
+        int startButtonPress = 0;
         try{
           myButtonScore = int.parse(myButtonScoreChar);
         }catch(e){
@@ -1297,16 +1300,21 @@ class _GamePageState extends State<GamePage> {
         }catch(e){
           print("error converting opp button score to int $e");
         }
+        try{
+          startButtonPress = int.parse(startButtonPressChar);
+        }catch(e){
+          print("error converting start button press to int $e");
+        }
 
         if(game.inProgress){
           print("Game in progress: ${game.inProgress}");
-          if(myButtonScore - 1!= prevMyButtonScore){ //MY SCORE BUTTON MUST BE START
+          if(myButtonScore != prevMyButtonScore){ //MY SCORE BUTTON MUST BE START
             setState(() {
               print("New data in GamePage: $data");
               incMyScore();
               print("My score: ${game.myScore}");
             });
-            prevMyButtonScore = myButtonScore - 1;
+            prevMyButtonScore = myButtonScore;
           }
           if(oppButtonScore != prevOppButtonScore){
             setState(() {
@@ -1319,7 +1327,9 @@ class _GamePageState extends State<GamePage> {
 
         }
         else{
-          startStandardGame();
+          if(startButtonPress == 1){
+            startStandardGame();
+          }
         }
       }
     };
