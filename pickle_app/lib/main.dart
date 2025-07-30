@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.6.30.68:80";
+  final String url = "http://10.0.0.188:80";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -271,6 +271,49 @@ class APIRequests {
 
     print(params);
     String endpoint = "/pickle/game/register";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> registerStats(String un, int gameID, int swingCount, int swingHits, double swingMax) async{
+    Map<String, dynamic> userId = await getUserID(un);
+    final int userIdNum = userId[un];
+
+
+    Map<String, dynamic> params = {
+      'user_id': userIdNum,
+      'game_id': gameID,
+      'swing_count': swingCount,
+      'swing_hits': swingHits,
+      'swing_max': swingMax,
+      'Q1_hits': 0,
+      'Q2_hits': 0,
+      'Q3_hits': 0,
+      'Q4_hits': 0
+    };
+
+    print(params);
+    String endpoint = "/pickle/game/registerStats";
     print("$endpoint");
 
 
@@ -1105,14 +1148,19 @@ class _GamePageState extends State<GamePage> {
   }
 
   ///save finished game data to Hive box
-  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async {
+  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints, String un, int swingCount, int swingHits, double swingMax) async {
     Map<String, dynamic> gameToSave = {
       'timestamp': startTime,
       'game_type': gameTypeNum,
       'winner_name': winnerName,
       'loser_name': loserName,
       'winner_points': winnerPoints,
-      'loser_points': loserPoints
+      'loser_points': loserPoints,
+      'username': un,
+      //'game_id': gameId, will not be known on call
+      'swing_count': swingCount,
+      'swing_hits': swingHits,
+      'swing_max': swingMax
     };
 
     final cacheBox = await Hive.openBox("gameQueue");
@@ -1128,12 +1176,14 @@ class _GamePageState extends State<GamePage> {
     for(final key in cacheBoxKeys){
       final gameData = cacheBox.get(key);
       print(gameData);
-      api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
+      Map<String, dynamic> gameIdMap = await api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
+      int gameID = gameIdMap['game_id'];
+      api.registerStats(gameData['username'], gameID, gameData['swing_count'], gameData['swing_hits'], gameData['swing_max']);
     }
   }
 
   ///format game info for saving, cache or register to database, reset game
-  void saveAndRestartGame(){
+  void saveAndRestartGame() async{
     int gameTypeNum = game.gameTypeToInt();
 
     String winnerName = "";
@@ -1164,11 +1214,15 @@ class _GamePageState extends State<GamePage> {
     }
 
     if(internetConnection.isOnline.value == true){
-      api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
-      print("Online. Sending game to database");
+      Map<String, dynamic> gameIdMap = await api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      int gameID = gameIdMap['game_id'];
+      String un = context.read<User>().username;
+      api.registerStats(un, gameID, game.swingCount, game.swingHits, game.swingMax);
+      print("Online. Sending game to database $un");
     }
     else{
-      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      //TODO test game stat caching, BLE disconnected with wifi(could be bc app is sent to background when setting airplane mode, can turn wifi mode off on esp)
+      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax);
       print("Offline. Caching game data");
     }
 
@@ -1204,6 +1258,7 @@ class _GamePageState extends State<GamePage> {
         if(game.inProgress){
           print("Game in progress: ${game.inProgress}");
           //TODO change for new score formatting
+          String myButtonScore = data[0];
           setState(() {
             print("New data in GamePage: $data");
             incMyScore();
