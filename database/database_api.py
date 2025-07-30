@@ -667,10 +667,26 @@ class restAPI:
         if not self._is_user_id_valid(loser_id):
             raise self.APIError(f'User ID {loser_id} is not a valid user', 404)
 
+        if game_type not in (0,):
+            raise self.APIError(f'Invalid game type {game_type}', 400)
+        
+        if winner_points > 11:
+            if winner_points - loser_points != 2:
+                raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
+        elif winner_points < 11:
+            raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
+        elif loser_points >= 11:
+            raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
+
+
         self._dbCursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
         game_id_raw = self._dbCursor.fetchone()
+
+        # If there are registered games, the next game is has the ID of the last one + 1
         if game_id_raw:
             game_id = game_id_raw[0] + 1
+        
+        # If there are no registered games, make the first ID 0
         else:
             game_id = 0
 
@@ -707,7 +723,7 @@ class restAPI:
             raise self.APIError(f'Game ID {game_id} not found in database', 404)
 
         if Q1_hits + Q2_hits + Q3_hits + Q4_hits != swing_hits:
-            raise self.APIError(f'Individual quadrent hits ({Q1_hits},{Q2_hits},{Q3_hits},{Q4_hits})don\'t add to the total hits ({swing_hits})', 400)
+            raise self.APIError(f'Individual quadrent hits ({Q1_hits},{Q2_hits},{Q3_hits},{Q4_hits}) don\'t add to the total hits ({swing_hits})', 400)
 
         self._dbCursor.execute(
             "INSERT INTO user_game_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
