@@ -48,11 +48,11 @@ def test_auth(tmp_path):
     with setup_server(tmp_path, users={'testUserA':'t3stUserP@ssA', 'testUserB':'t3stUserP@ssB'}) as server:
 
         # Verify we can't access without authentication
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':1})
         assert response.status_code == 401
         assert 'Authentication required, please obtain an API key through pickle/user/auth' in response.text
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2})
         assert response.status_code == 401
         assert 'Authentication required, please obtain an API key through pickle/user/auth' in response.text
 
@@ -76,35 +76,35 @@ def test_auth(tmp_path):
         before_time = time.time()
 
         # Check user view permissions
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {root_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {root_key}'})
         assert response.status_code == 200
-        assert all(i in response.json().keys() for i in ('1', '2'))
+        assert all(i in response.json() for i in ('1', '2'))
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1}, headers={'Authorization':f'Bearer {userA_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':1}, headers={'Authorization':f'Bearer {userA_key}'})
         assert response.status_code == 200
-        assert '1' in response.json().keys()
+        assert '1' in response.json()
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2}, headers={'Authorization':f'Bearer {userA_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {userA_key}'})
         assert response.status_code == 403
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1}, headers={'Authorization':f'Bearer {userB_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':1}, headers={'Authorization':f'Bearer {userB_key}'})
         assert response.status_code == 403
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2}, headers={'Authorization':f'Bearer {userB_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {userB_key}'})
         assert response.status_code == 200
-        assert '2' in response.json().keys()
+        assert '2' in response.json()
 
         # Make users friends, check view permissions
         response = requests.post("http://localhost:8080/pickle/user/addFriend", json={'user_id':1, 'friend_id':2}, headers={'Authorization':f'Bearer {userA_key}'})
         assert response.status_code == 200
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {userA_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {userA_key}'})
         assert response.status_code == 200
-        assert all(i in response.json().keys() for i in ('1', '2'))
+        assert all(i in response.json() for i in ('1', '2'))
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {userB_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {userB_key}'})
         assert response.status_code == 200
-        assert all(i in response.json().keys() for i in ('1', '2'))
+        assert all(i in response.json() for i in ('1', '2'))
 
         # Check edit permissions
         response = requests.post("http://localhost:8080/pickle/user/set", json={'user_id':1, 'username':'newUserA'}, headers={'Authorization':f'Bearer {root_key}'})
@@ -160,14 +160,14 @@ def test_auth(tmp_path):
         assert userB_renew != new_userB_renew
 
         # Check that new keys work
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {new_root_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':[1,2]}, headers={'Authorization':f'Bearer {new_root_key}'})
         assert response.status_code == 200
-        assert all(i in response.json().keys() for i in ('1', '2'))
+        assert all(i in response.json() for i in ('1', '2'))
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':1}, headers={'Authorization':f'Bearer {new_userA_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':1}, headers={'Authorization':f'Bearer {new_userA_key}'})
         assert response.status_code == 200
-        assert '1' in response.json().keys()
+        assert '1' in response.json()
 
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2}, headers={'Authorization':f'Bearer {new_userB_key}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {new_userB_key}'})
         assert response.status_code == 200
-        assert '2' in response.json().keys()
+        assert '2' in response.json()

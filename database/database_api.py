@@ -359,12 +359,12 @@ class restAPI:
             raise self.APIError(f'Invalid parameters for DELETE pickle/user, must include user ID: {params}', 400)
         
         user_id = int(params['user_id'])
-        
-        if not self._user_canEdit(params.get('sender_id'), user_id):
-            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+        
+        if not self._user_canEdit(params.get('sender_id'), user_id):
+            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
         self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
         self._dbCursor.execute("DELETE FROM friends WHERE userA=? OR userB=?", (user_id, user_id))
