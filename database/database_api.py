@@ -239,9 +239,28 @@ class restAPI:
             raise self.APIError('API key has expired, please renew with the renewal key.', 498)
     
 
-    def _api_user_get(self, params: dict):
+    def _api_user_getUsername(self, params: dict):
         if 'user_id' not in params:
-            raise self.APIError(f'Invalid parameters for pickle/user/get, must include user ID: {params}', 400)
+            raise self.APIError(f'Invalid parameters for pickle/user/getUsername, must include user ID(s): {params}', 400)
+
+        user_ids = params['user_id']
+        if type(user_ids) is int:
+            user_ids = [user_ids]
+
+        result_dict = {}
+        for user_id in user_ids:
+            if not self._is_user_deleted(user_id) and not self._is_user_account_valid(user_id):
+                raise self.APIError(f'User ID {user_id} is not a valid user', 404)
+
+            self._dbCursor.execute(f"SELECT username FROM users WHERE user_id=?", (user_id,))
+            result_dict[user_id] = self._dbCursor.fetchone()[0]
+
+        return result_dict
+
+
+    def _api_user_getStats(self, params: dict):
+        if 'user_id' not in params:
+            raise self.APIError(f'Invalid parameters for pickle/user/getStats, must include user ID(s): {params}', 400)
         
         user_ids = params['user_id']
         if type(user_ids) == int:
@@ -257,21 +276,20 @@ class restAPI:
                 raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
             if not self._user_canView(params.get('sender_id'), user_id):
-                raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
+                    raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
             
-            if 'objects' in params:
-                objects = params['objects']
+            if 'stats' in params:
+                stats = params['stats']
             else:
-                objects = ['username', 'gamesPlayed', 'gamesWon', 'averageScore']
+                stats = ['gamesPlayed', 'gamesWon', 'averageScore']
 
             results = {}
-            for object in objects:
-                if object in ('username', 'gamesPlayed', 'gamesWon', 'averageScore'):
-                    self._dbCursor.execute(f"SELECT {object} FROM users WHERE user_id=?", (user_id,))
-                    results[object] = self._dbCursor.fetchone()[0]
-
+            for stat in stats:
+                if stat in ('gamesPlayed', 'gamesWon', 'averageScore'):
+                    self._dbCursor.execute(f"SELECT {stat} FROM users WHERE user_id=?", (user_id,))
+                    results[stat] = self._dbCursor.fetchone()[0]
                 else:
-                    raise self.APIError(f'ERROR: invalid object requested: {object}', 400)
+                    raise self.APIError(f'ERROR: invalid stat requested: {stat}', 400)
             
             result_dict[user_id] = results
 
