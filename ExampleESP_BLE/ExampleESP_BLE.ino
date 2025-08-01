@@ -684,16 +684,28 @@ float calculateForce(int analogValue) {
 }
 
 void updateQuadrantHits() {
+  // For testing: only check FSR 1 (pin 36), set others to 0
   int analogValues[4] = {
-    analogRead(fsr_1_pin),
-    analogRead(fsr_2_pin),
-    analogRead(fsr_3_pin),
-    analogRead(fsr_4_pin)
+    analogRead(fsr_1_pin),  // Only connected FSR
+    0,                      // Disconnected - force to 0
+    0,                      // Disconnected - force to 0
+    0                       // Disconnected - force to 0
   };
 
   float forces[4];
   for (int i = 0; i < 4; i++) {
     forces[i] = calculateForce(analogValues[i]);
+  }
+
+  // Debug: Print raw values for FSR 1
+  static unsigned long lastDebugTime = 0;
+  if (millis() - lastDebugTime > 1000) {  // Print every second
+    Serial.print("FSR1 raw: ");
+    Serial.print(analogValues[0]);
+    Serial.print(" -> ");
+    Serial.print(forces[0]);
+    Serial.println("g");
+    lastDebugTime = millis();
   }
 
   // Find max force and index
@@ -706,8 +718,8 @@ void updateQuadrantHits() {
     }
   }
 
-  // Only count hits above noise threshold
-  const float HIT_THRESHOLD_GRAMS = 100.0;  // adjust as needed
+  // Only count hits above noise threshold  
+  const float HIT_THRESHOLD_GRAMS = 500.0;  // raised to reduce false positives
   if (maxForce >= HIT_THRESHOLD_GRAMS) {
     quadrantHits[maxIndex]++;
 
