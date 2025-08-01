@@ -1,8 +1,10 @@
 // Credit to Evandro Copercini for original example code: 
 // https://docs.espressif.com/projects/arduino-esp32/en/latest/api/bluetooth.html
 
-// Credit to Rui Santos for example on interfacing the ESP-32 with outside components and processing messages:
+// Credit to Rui Santos for example on interfacing the ESP-32 with outside components and processing messages
+// as well as the web server used to upload sketches OTA (or over the air) (Credit to Espressif for original OTA code as well):
 // https://randomnerdtutorials.com/esp32-bluetooth-classic-arduino-ide/
+// https://randomnerdtutorials.com/esp32-over-the-air-ota-programming/
 
 // Credit to Robin2 for help with parsing serial input:
 // https://forum.arduino.cc/t/serial-input-basics/278284/2
@@ -28,10 +30,17 @@
 #include <BLE2902.h>
 
 // Libraries for sensor communication
-#include "BluetoothSerial.h"
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
+
+// Libraries for OTA communication (allows for remote upload without serial)
+// TEMPORARILY DISABLED TO SAVE SPACE
+// #include <WiFi.h>
+// #include <WiFiClient.h>
+// #include <WebServer.h>
+// #include <ESPmDNS.h>
+// #include <Update.h>
 
 // Library for button communication
 #include <Button2.h>
@@ -60,10 +69,31 @@
 #define seg2_f 32
 #define seg2_g 33
 
+// Pins for FSRs
+
 #define fsr_1_pin 27
 #define fsr_2_pin 35
 #define fsr_3_pin 32
 #define fsr_4_pin 33
+
+// Constants to connect to the ESP32 via OTA
+// TEMPORARILY DISABLED TO SAVE SPACE
+/*
+const char* host = "esp32";
+const char* ssid = "REPLACE_WITH_YOUR_SSID";
+const char* password = "REPLACE_WITH_YOUR_PASSWORD";
+
+// WebServer to use
+WebServer server(80);
+
+// Web page to display when connected to IP
+const char* loginIndex = 
+"<form name='f'><table width='20%' bgcolor='A09F9F' align='center'><tr><td colspan=2><center><b>ESP32 Login</b></center></td></tr><tr><td>User:</td><td><input type='text' size=15 name='u'></td></tr><tr><td>Pass:</td><td><input type='password' size=15 name='p'></td></tr><tr><td><input type='submit' onclick='check(this.form)' value='Login'></td></tr></table></form><script>function check(f){if(f.u.value=='admin'&&f.p.value=='admin'){window.open('/serverIndex')}else{alert('Error')}}</script>";
+
+// Server Index page to allow for files to be uploaded
+const char* serverIndex = 
+"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script><form method='POST' action='#' enctype='multipart/form-data' id='f'><input type='file' name='update'><input type='submit' value='Update'></form><div id='p'>progress: 0%</div><script>$('form').submit(function(e){e.preventDefault();var f=$('#f')[0];var d=new FormData(f);$.ajax({url:'/update',type:'POST',data:d,contentType:false,processData:false,xhr:function(){var x=new window.XMLHttpRequest();x.upload.addEventListener('progress',function(evt){if(evt.lengthComputable){var per=evt.loaded/evt.total;$('#p').html('progress: '+Math.round(per*100)+'%');}},false);return x;},success:function(d,s){console.log('success!')},error:function(a,b,c){}});});</script>";
+*/
 
 // Create array to get quadrant hits
 int quadrantHits[4] = {0, 0, 0, 0};  // Q1-Q4 hit counts
@@ -105,7 +135,6 @@ String device_name = "ESP32-BT";
 #define SCORE_CHAR_UUID "27923275-9745-4b89-b6b2-a59aa7533495"
 #define MAX_SWING_SPEED_CHAR_UUID "8b2c1a45-7d3e-4f89-a2b1-c5d6e7f8a9b0"
 #define HIT_SUMMARY_CHAR_UUID "9c3d2b56-8e4f-5a90-b3c2-d6e7f8a9b0c1"
-#define TEMPERATURE_CHAR_UUID "ad4e3c67-9f5a-6b01-c4d3-e7f8a9b0c1d2"
 
 Adafruit_MPU6050 mpu;
 
@@ -117,13 +146,11 @@ Adafruit_MPU6050 mpu;
 BLECharacteristic* scoreChar = nullptr;
 BLECharacteristic* maxSwingSpeedChar = nullptr;
 BLECharacteristic* hitSummaryChar = nullptr;
-BLECharacteristic* currentTempChar = nullptr;
 
 // Descriptors
 BLEDescriptor* scoreDesc;
 BLEDescriptor* maxSwingSpeedDesc;
 BLEDescriptor* hitSummaryDesc;
-BLEDescriptor* currentTempDesc;
 
 // Bool to determine whether to use directional bias or not
 const bool USE_DIRECTIONAL_BIAS = true;
@@ -178,12 +205,11 @@ unsigned long startTransmissionTime;
 unsigned long endTransmissionTime;
 unsigned long latency;
 
-// String for values
-String pointsString = "";
-String newSwingString = "";
-String maxSwingString = "";
-String currentTemperature = "";
-String latencyString = "";
+// Char arrays for values
+char pointsString[50];
+char newSwingString[50];
+char maxSwingString[50]; 
+char latencyString[100];
 bool messageFinishedSending = false;
 
 // Seven-segment code
@@ -433,23 +459,6 @@ void initBLECharacteristics(BLEService* service) {
   hitSummaryChar->addDescriptor(new BLE2902());
   Serial.println("Hit summary setup complete");
 
-    // Create temperature characteristic
-  Serial.println("Creating temperature characteristic...");
-  currentTempChar = service->createCharacteristic(
-    TEMPERATURE_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  
-  if (currentTempChar == nullptr) {
-    Serial.println("ERROR: Failed to create temperature characteristic!");
-    return;
-  }
-
-  currentTempDesc = new BLEDescriptor((uint16_t)0x2901);
-  currentTempDesc->setValue("Current Temperature");
-  currentTempChar->addDescriptor(currentTempDesc);
-  currentTempChar->addDescriptor(new BLE2902());
-  Serial.println("Temperature characteristic setup complete");
   
   Serial.println("BLE characteristics initialization complete");
 
@@ -464,6 +473,72 @@ void initSevenSegmentDisplays() {
     digitalWrite(segPins2[i], HIGH);
   }
 }
+
+
+// Initialization code to setup web server
+// TEMPORARILY DISABLED TO SAVE SPACE
+/*
+void initWebServer() {
+  // Connect to WiFi network
+  WiFi.begin(ssid, password);
+  Serial.println("");
+
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // use mdns for host name resolution
+  if (!MDNS.begin(host)) { //http://esp32.local
+    Serial.println("Error setting up MDNS responder!");
+    while (1) {
+      delay(1000);
+    }
+  }
+  Serial.println("mDNS responder started");
+  // return index page which is stored in serverIndex
+  server.on("/", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", loginIndex);
+  });
+  server.on("/serverIndex", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", serverIndex);
+  });
+  // handling uploading firmware file
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      // flashing firmware to ESP
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) { //true to set the size to the current progress
+        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
+  server.begin();
+}
+*/
 
 // Function to get the "true" time accounting for overflows
 uint64_t getSafeMicros() {
@@ -524,9 +599,8 @@ void clickHandler(Button2& btn) {
 
   // Immediately update BLE if connected
   if (deviceConnected) {
-    String scoreUpdate = String(pointsThisGame) + "," + String(opponentPoints) + "," + String(gameStarted);
     static char scoreArray[50];
-    scoreUpdate.toCharArray(scoreArray, 50);
+    snprintf(scoreArray, sizeof(scoreArray), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
     
     if (&scoreChar == nullptr) {
       Serial.println("ERROR: scoreChar is NULL");
@@ -638,14 +712,11 @@ void updateQuadrantHits() {
     quadrantHits[maxIndex]++;
 
     // Format BLE message
-    String hitSummary = "Q1 Hits: " + String(quadrantHits[0]) + ",Q2 Hits: " + String(quadrantHits[1]) +
-                        ",Q3 Hits: " + String(quadrantHits[2]) + ",Q4 Hits: " + String(quadrantHits[3]);
-
-    Serial.println(hitSummary);
-    
-    // Send hit summary over BLE characteristic
     static char hitArray[100];
-    hitSummary.toCharArray(hitArray, 100);
+    snprintf(hitArray, sizeof(hitArray), "Q1 Hits: %d,Q2 Hits: %d,Q3 Hits: %d,Q4 Hits: %d", 
+             quadrantHits[0], quadrantHits[1], quadrantHits[2], quadrantHits[3]);
+
+    Serial.println(hitArray);
 
     if (hitSummaryChar != nullptr) {
       hitSummaryChar->setValue(hitArray);
@@ -660,6 +731,9 @@ void setup() {
 
   // Connect to serial port w/ baud rate 115200
   Serial.begin(115200);
+
+  // Setup Web Server
+  // initWebServer(); // TEMPORARILY DISABLED TO SAVE SPACE
 
   // Setup Accelerometer
   initAccelerometer();
@@ -716,6 +790,12 @@ void loop() {
   // If you receive messages from the phone detailing the past total points from all time and past max swing speed, react accordingly
   // E.g. if it gives the past number of points, return the new total
   // Or if it gives the number of games played and the total points, calculate the average PPG
+
+  // Outside of device connected loop, handle web server operations
+  // server.handleClient(); // TEMPORARILY DISABLED TO SAVE SPACE
+
+  // Delay for 1 ms to prevent problems
+  delay(1);
 
   if (deviceConnected) {
 
@@ -813,12 +893,12 @@ void loop() {
           lastSwingEndTime = millis();
 
           // report the raw magnitude peak over BLE
-          newSwingString = String(swingPeakMagnitude, 2) + " m/s";
+          snprintf(newSwingString, sizeof(newSwingString), "%.2f m/s", swingPeakMagnitude);
           float currentMax = checkMaxSwingSpeed(swingPeakMagnitude);
 
           static char maxSwingArray[50];
-          maxSwingString = String(currentMax, 2) + " m/s";
-          maxSwingString.toCharArray(maxSwingArray, 50);
+          snprintf(maxSwingString, sizeof(maxSwingString), "%.2f m/s", currentMax);
+          snprintf(maxSwingArray, sizeof(maxSwingArray), "%.2f m/s", currentMax);
           if (maxSwingSpeedChar) {
             maxSwingSpeedChar->setValue(maxSwingArray);
             maxSwingSpeedChar->notify();
@@ -837,9 +917,6 @@ void loop() {
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
 
-        // Get info from the accelerometer
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
 
         // Generate value from 0 to 100 for probability
         // int randProbability = random(0, 100);
@@ -851,31 +928,18 @@ void loop() {
         // }
 
         // Send stats over in string format
-        pointsString = String(pointsThisGame) + "," + String(opponentPoints) + "," + String(gameStarted);
-        currentTemperature = String(temp.temperature, 1) + " Celsius";
+        snprintf(pointsString, sizeof(pointsString), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
         
         // After calculations, start the transmission timer
         // Note - this can overflow after 70 min of arduino runtime - might need to fix later
         startTransmissionTime = getSafeMicros();
 
-        // Create static character arrays to send data and fill them
-        static char scoreArray[50];
-        pointsString.toCharArray(scoreArray, 50);
-        
-        static char currentTemperatureArray[50];
-        currentTemperature.toCharArray(currentTemperatureArray, 50);
-
         
         if (scoreChar != nullptr) {
-          scoreChar->setValue(scoreArray);
+          scoreChar->setValue(pointsString);
           scoreChar->notify();
         }
 
-        
-        if (currentTempChar != nullptr) {
-          currentTempChar->setValue(currentTemperatureArray);
-          currentTempChar->notify();
-        }
 
         endTransmissionTime = getSafeMicros();
 
@@ -883,13 +947,11 @@ void loop() {
         Serial.print("Current Score: ");
         Serial.println(pointsString);
 
-        Serial.print("Current Temperature: ");
-        Serial.println(currentTemperature);
 
         latency = endTransmissionTime - startTransmissionTime;
 
         // Turn latency into a string and print to serial (no need to send it over)
-        latencyString = "Latency: " + String(latency) + " microseconds";
+        snprintf(latencyString, sizeof(latencyString), "Latency: %lu microseconds", latency);
 
         Serial.println(latencyString);
 
