@@ -62,7 +62,7 @@
 
 // Segment pins for display 2
 #define seg2_a 4
-#define seg2_b 17
+#define seg2_b 2
 #define seg2_c 25
 #define seg2_d 26
 #define seg2_e 34
@@ -71,10 +71,10 @@
 
 // Pins for FSRs
 
-#define fsr_1_pin 27
-#define fsr_2_pin 35
-#define fsr_3_pin 32
-#define fsr_4_pin 33
+#define fsr_1_pin 36
+#define fsr_2_pin 39
+#define fsr_3_pin 12
+#define fsr_4_pin 14
 
 // Constants to connect to the ESP32 via OTA
 // TEMPORARILY DISABLED TO SAVE SPACE
@@ -808,6 +808,9 @@ void loop() {
     // Poll for button presses
     buttonIncrement.loop();
     buttonDecrement.loop();
+
+    // Check FSR sensors for quadrant hits (temporary for testing)
+    updateQuadrantHits();
 
     // Try sending initial score - but only after a small delay to ensure BLE is ready
     static bool sentInitialScore = false;
