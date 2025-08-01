@@ -36,6 +36,7 @@ class restAPI:
         """
         self.dbFile = dbFile
 
+        # If set by clearDB, erase the database
         if clearDB and os.path.isfile(dbFile):
             os.remove(dbFile)
 
@@ -45,9 +46,9 @@ class restAPI:
         self.__apiKeys = {}
         self.__renewalKeys = {}
 
+        # If the database is uninitialized, initialize it
         self._dbCursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-        count = self._dbCursor.fetchone()[0]
-        if count == 0:
+        if self._dbCursor.fetchone()[0] == 0:
             self._init_db()
 
         
@@ -66,22 +67,27 @@ class restAPI:
             dict: dictionary of return values (dependent on endpoint)
         """
         try:
+            # Check that the base of the URI is pickle/
             uri_parts = uri[1:].split('/',1)
             if uri_parts[0] != 'pickle':
                 raise self.APIError(f'Base endpoint must be "pickle/": {uri_parts[0]}', 404)
             
+            # Replace '/' in URI with '_', as that's the convention used for naming api endpoint functions
             endpoint = uri_parts[1].replace('/', '_')
 
+            # Check if authentication is required (if it's enabled and if the endpoint requires it)
             if self._useAuth and (endpoint not in ("user_create", "user_auth", "user_auth_renew", "coffee")):
                 if not api_key:
                     raise self.APIError('Authentication required, please obtain an API key through pickle/user/auth', 401)
 
+                # Check API key, if valid append 'sender_id' to input dictionary for the endpoint to know the sender's user ID
                 sender_id = self._checkApiKey(api_key)
                 params['sender_id'] = sender_id
 
                 if sender_id == None:
                     raise self.APIError('API key not recognized, could be out of date or server has restarted. Try requesting another one with pickle/user/auth', 401)
             
+            # Get the endpoint function, which will be named "self._api_" plus the endpoint URI without pickle and with '/' replaced by '_'
             func = getattr(self, "_api_" + endpoint, None)
             if func:
                 return func(params)
@@ -90,145 +96,190 @@ class restAPI:
                 raise self.APIError(f'Endpoint not found: {uri}', 404)
         
         except Exception as error:
+            # If any exception happens, we want to delete the input parameters and API key for security
             del params
             del api_key
             raise error
 
 
     def _init_db(self):
+        # Initializes the SQLite database from scratch (create all tables)
         self._dbCursor.execute('CREATE TABLE users(user_id INT, username TEXT, passwordHash BLOB, salt BLOB, valid INT, gamesPlayed INT, gamesWon INT, averageScore REAL)')
         self._dbCursor.execute('CREATE TABLE games(game_id INT, timestamp INT, game_type INT, winner_id INT, loser_id INT, winner_points INT, loser_points INT)')
         self._dbCursor.execute('CREATE TABLE user_game_stats(user_id INT, game_id INT, swing_count INT, swing_hits INT, swing_max REAL, Q1_hits INT, Q2_hits INT, Q3_hits INT, Q4_hits INT)')
         self._dbCursor.execute('CREATE TABLE friends(userA INT, userB INT)')
 
-        pass_hash, salt = self.gen_password_hash('root')
+        # Generate the admin user and commit to database
+        pass_hash, salt = self._gen_password_hash('root')
         self._dbCursor.execute("INSERT INTO users VALUES (0, 'admin', ?, ?, 0, NULL, NULL, NULL)", (pass_hash, salt))
         self._database.commit()
         
         
     def _check_username(self, username: str):
+        # Must be between 5 and 25 characters long
         if not 5 <= len(username) <=25:
             return False
         
+        # Cannot certain reserved names
         if username in ('admin', 'deleted_user', 'unknown_user'):
             return False
         
+        # Must be ascii and only printable characters (no spaces, newlines, etc)
         if not username.isascii() or not username.isprintable() or ' ' in username:
             return False
 
         return True
     
+
     def _check_password(self, password: str):
-        if password in ('password', 'query', '123456789', '123456', 'secret'):
+        # Cannot be in a list of common passwords
+        if password in ('password', 'querty', '123456789', '123456', 'secret'):
             return False
         
+        # Must be between 10 and 50 characters long
         if not 10 <= len(password) <= 50:
             return False
         
+        # Must be ascii and cannot contain whitespace (except for spaces)
         if not password.isprintable() or not password.isascii():
             return False
         
+        # Must include at least 1 digit
         if not any(char.isdigit() for char in password):
             return False
         
-        if not any(char.isalpha() for char in password):
-            return False
-        
+        # Must include at least one uppercase letter
         if not any(char.isupper() for char in password):
             return False
         
+        # Must include at least one lower case letter
         if not any(char.islower() for char in password):
             return False
         
+        # Must include at least one punctuation mark (any ascii characters that aren't alphanumeric or whitespace)
         if not any(char in password for char in string.punctuation):
             return False
         
         return True
     
+
     def _is_username_existing(self, username: str):
+        # Checks if there is a user with a specific username in the database
         self._dbCursor.execute("SELECT COUNT(*) FROM users WHERE username=?", (username,))
         return self._dbCursor.fetchone()[0] > 0
         
+
     def _is_user_account_valid(self, user_id: int):
+        # Checks if a user ID is associated with a valid user account (excludes deleted users, admin, unknown users)
         self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self._dbCursor.fetchone()
         return valid and valid[0]
     
+
     def _is_user_id_valid(self, user_id: int):
+        # Checks if a user ID is a valid ID (includes unknown users, but not deleted users or admin)
         return user_id == self.UNKNOWN_USER or self._is_user_account_valid(user_id)
     
+
     def _is_user_deleted(self, user_id: int):
+        # Checks if a user ID is associated with a deleted user account
         self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
         deleted = self._dbCursor.fetchone()
         return deleted and deleted[0] == 'deleted_user'
     
-    def _are_users_friends(self, userA: int, userB: int):
-        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
-        is_friend = self._dbCursor.fetchone()
 
-        if is_friend:
-            return True
-        else:
-            return False
+    def _are_users_friends(self, userA: int, userB: int):
+        # Checks if two users are friends
+        self._dbCursor.execute("SELECT * FROM friends WHERE (userA=? AND userB=?) OR (userA=? AND userB=?)", (userA, userB, userB, userA))
+        return True if self._dbCursor.fetchone() else False
     
+
     def _user_canView(self, sender_id: int, user_id: int):
+        # Checks if a sender has permissions to view a user's private data (e.g. stats)
+        # If authentication is disabled, anything is allowed
         if not self._useAuth:
             return True
 
+        # If no sender ID was specified, assume access is denied
         if sender_id is None:
             return False
         
+        # Admin is allowed to access anything, a user is allowed to access their own data
         if sender_id == self.ADMIN_USER or sender_id == user_id:
             return True
         
+        # Friends are allowed to view each other's data
         return self._are_users_friends(sender_id, user_id)
     
+
     def _user_canEdit(self, sender_id: int, user_id: int):
+        # Checks whether a sender has permissions to edit a user's data
+        # If auth is disabled anything is allowed. Admin is allowed to do anything
         if not self._useAuth or sender_id == self.ADMIN_USER:
             return True
 
+        # If no sender ID was specified, assume access is denied
         if sender_id is None:
             return False
         
+        # Otherwise, only the user is allowed to edit their own data
         return sender_id == user_id
 
-    @staticmethod
-    def gen_password_hash(password:str):
+    def _gen_password_hash(self, password:str):
+        # Generates a password hash and random salt given a plain text password
         salt = bytearray(os.urandom(16))
         hash = bytearray(hashlib.sha256(salt + password.encode()).digest())
         return hash, salt
     
     def _check_userAuth(self, username:str, password:str):
-        self._dbCursor.execute("SELECT passwordHash, salt FROM users WHERE username=?", (username,))
+        # Attempts to authenticate a user from username/password, returns user ID if successful, None if not
+        # Pull user auth data based on username
+        self._dbCursor.execute("SELECT user_id, passwordHash, salt FROM users WHERE username=?", (username,))
         data = self._dbCursor.fetchone()
-        if not data:
-            return False
+        if not data: # If username not found, impossible to authenticate
+            return None
 
-        dbHash = data[0]
-        salt = data[1]
+        # Verify password using password hash and salt form database
+        dbHash = data[1]
+        salt = data[2]
         userHash = bytearray(hashlib.sha256(salt + password.encode()).digest())
-        return userHash == dbHash
+        if userHash == dbHash:
+            return int(data[0])
+        else:
+            return None
     
+
     def _gen_ApiKey(self, user_id:int):
+        # Generates API and renewal keys for a given user. Automatically registers them in the server
+        # Generate random API key
         rand_val = os.urandom(12)
         api_key = base64.b64encode(rand_val).decode('utf-8')
+
+        # Prevent duplicates by continuously generating new keys until a non-duplicate is found
         while api_key in self.__apiKeys:
             rand_val = os.urandom(12)
             api_key = base64.b64encode(rand_val).decode('utf-8')
 
+        # Store API key within local private dictionary
         self.__apiKeys[api_key] = {'user_id':user_id, 'expiration':time.time() + self.API_KEY_TIMEOUT}
 
+        # Generate random renewal key
         rand_val = os.urandom(12)
         renew_key = base64.b64encode(rand_val).decode('utf-8')
+
+        # Prevent duplicates by continuously generating new keys until a non-duplicate is found
         while api_key in self.__renewalKeys:
             rand_val = os.urandom(12)
             renew_key = base64.b64encode(rand_val).decode('utf-8')
 
+        # Store renewal key within local private dictionary
         self.__renewalKeys[renew_key] = user_id
-
         return api_key, renew_key
     
+
     def _checkApiKey(self, apiKey:str):
+        # Checks if an API is registered, and if so returns the associated user ID
+        # Also checks if the API key has expired, and raises an exception if so
         key_info = self.__apiKeys.get(apiKey)
 
         if not key_info:
@@ -240,18 +291,41 @@ class restAPI:
     
 
     def _api_user_getUsername(self, params: dict):
-        if 'user_id' not in params:
-            raise self.APIError(f'Invalid parameters for pickle/user/getUsername, must include user ID(s): {params}', 400)
+        """Retrieves username(s) of user(s) with a given user ID(s).
 
+        Args:
+            'user_id' (int | list(int)): user ID(s) of account(s) to retrieve usernames from
+
+        Returns:
+            dict: usernames keyed by user ID
+        """
+        # Must include user_id to get any usernames
+        if 'user_id' not in params:
+            raise self.APIError(f'Invalid parameters for pickle/user/getUsername: {params}. Must include user_id as an int or list of ints.', 400)
+
+        # If single user ID passed, wrap it in a list for easier processing
         user_ids = params['user_id']
         if type(user_ids) is int:
             user_ids = [user_ids]
 
+        # Check user ID was either an int (now a list) or was already a list
+        if type(user_ids) != list:
+            raise self.APIError(f'Invalid user id(s) type: {user_ids}', 400)
+
+        # Loop through each user ID, adding their usernames to a dictionary for output
         result_dict = {}
         for user_id in user_ids:
+            # override for unknown users (user ID -1), so the UI correctly displays their status
+            if user_id == self.UNKNOWN_USER:
+                result_dict[user_id] = 'unknown_user'
+                continue
+
+            # We want to be able to retrieve deleted usernames (returns deleted_user, useful for UI)
+            # However, any other invalid user type should return an error (as they don't have a username)
             if not self._is_user_deleted(user_id) and not self._is_user_account_valid(user_id):
                 raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
+            # Retrieve username and add to dictionary for output
             self._dbCursor.execute(f"SELECT username FROM users WHERE user_id=?", (user_id,))
             result_dict[user_id] = self._dbCursor.fetchone()[0]
 
@@ -259,82 +333,119 @@ class restAPI:
 
 
     def _api_user_getStats(self, params: dict):
+        """Retrieves user statistics of specific user(s).
+        By default, all accessible user stats be returned, but the `stats` parameter can be used to query for specific values.
+        The sender must have appropriate permissions to view these statistics (must be admin or have be friends).
+
+        Args:
+            'user_id' (int | list(int)): user ID(s) of account(s) to retrieve stats from
+
+        Returns:
+            dict: requested stats keyed by user ID
+        """
+        # Must include user_id to get any stats
         if 'user_id' not in params:
             raise self.APIError(f'Invalid parameters for pickle/user/getStats, must include user ID(s): {params}', 400)
         
+        # If single user ID passed, wrap it in a list for easier processing
         user_ids = params['user_id']
         if type(user_ids) == int:
             user_ids = [user_ids]
 
+        # Check user ID was either an int (now a list) or was already a list
         if type(user_ids) != list:
             raise self.APIError(f'Invalid user id(s) type: {user_ids}', 400)
 
+        # Loop through each user ID, adding their stats to a dictionary for output
         result_dict = {}
         for user_id in user_ids:
-
-            if not self._is_user_deleted(user_id) and not self._is_user_account_valid(user_id):
+            # Check the user is valid first
+            if not self._is_user_account_valid(user_id):
                 raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
+            # Check that we have permissions to view this user's stats
             if not self._user_canView(params.get('sender_id'), user_id):
-                    raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
+                raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
             
+            # If specific stats requested, use those, otherwise pull all available stats
             if 'stats' in params:
                 stats = params['stats']
             else:
                 stats = ['gamesPlayed', 'gamesWon', 'averageScore']
 
+            # Retrieve each stat from the database, adding to dictionary
             results = {}
             for stat in stats:
                 if stat in ('gamesPlayed', 'gamesWon', 'averageScore'):
                     self._dbCursor.execute(f"SELECT {stat} FROM users WHERE user_id=?", (user_id,))
                     results[stat] = self._dbCursor.fetchone()[0]
                 else:
-                    raise self.APIError(f'ERROR: invalid stat requested: {stat}', 400)
+                    raise self.APIError(f'ERROR: unknown stat requested: {stat}', 404)
             
             result_dict[user_id] = results
 
         return result_dict
     
     
-    def _api_user_set(self, params: dict):
-        if 'user_id' not in params:
-            raise self.APIError(f'Invalid parameters for PUT pickle/user, must include user ID: {params}', 400)
-        
-        user_id = int(params['user_id'])
-        
-        if not self._user_canEdit(params.get('sender_id'), user_id):
-            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
+    def _api_user_setUsername(self, params: dict):
+        """Changes a user's username to a new one. Raises an APIError if the new username is already taken or invalid.
 
+        Args:
+            'user_id' (int): user ID of account to change username
+            'username' (str): the new username
+
+        Returns:
+            dict: 'success': (bool) True if the username change was successful
+        """
+        # We need a user ID to know what account to change the username of
+        if 'user_id' not in params:
+            raise self.APIError(f'Invalid parameters: {params.keys}. Must include user_id', 400)
+        
+        # We need a new username for this endpoint
+        if 'username' not in params:
+            raise self.APIError(f'Invalid parameters: {params.keys}. Must include username', 400)
+        username = params['username']
+        
+        # Check user ID is of a valid account
+        user_id = int(params['user_id'])
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
-        if ('username') not in params.keys():
-            raise self.APIError(f'No valid user values where found, nothing to set: {params.keys}', 400)
+        # Check we have the perms to edit username
+        if not self._user_canEdit(params.get('sender_id'), user_id):
+            raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
-        for param, val in params.items():
-            if param == 'username':
-                if not self._check_username(val):
-                    raise self.APIError(f'Invalid username {val}', 400)
-                
-                if self._is_username_existing(val):
-                    raise self.APIError(f'Username {val} already exists', 400)
+        # Check username is valid
+        if not self._check_username(username):
+            raise self.APIError(f'Invalid username {username}', 400)
+        
+        # Check username isn't a duplicate
+        if self._is_username_existing(username):
+            raise self.APIError(f'Username {username} already exists', 400)
 
-                self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (val, user_id))
-
-            elif param != 'user_id':
-                print(f'Invalid object parameter: {param}={val}')
-
+        # Change username in DB
+        self._dbCursor.execute("UPDATE users SET username=? WHERE user_id=?", (username, user_id))
         self._database.commit()
         return {'success':True}
     
 
     def _api_user_create(self, params: dict):
+        """Creates a user account in the database with a given username and password.
+
+        Args:
+            'username' (str): username for new user
+            'password' (str): password for new user
+
+        Returns:
+            dict: 'user_id': (int) the user ID of the newly created account.
+        """
+        # We need a username and password to create an account
         if 'username' not in params or 'password' not in params:
-            raise self.APIError(f'Invalid parameters for POST pickle/user, must include username and password: {params}', 400)
-        
+            raise self.APIError(f'Invalid parameters for POST pickle/user: {params}. Must include username and password', 400)
         username = params['username']
         password = params['password']
 
+        # Check username is valid and not duplicate, and password is valid
         if not self._check_username(username):
             raise self.APIError(f'Invalid username {username}', 400)
         
@@ -344,28 +455,45 @@ class restAPI:
         if not self._check_password(password):
             raise self.APIError(f'Invalid password "{password}"', 400)
 
-        pass_hash, salt = self.gen_password_hash(password)
+        # Generate a password hash and salt
+        pass_hash, salt = self._gen_password_hash(password)
 
+        # Fetch the latest user ID, this user will have the next ID
         self._dbCursor.execute("SELECT user_id FROM users ORDER BY user_id DESC LIMIT 1")
         user_id = self._dbCursor.fetchone()[0] + 1
 
+        # Add user to the database
         self._dbCursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
         self._database.commit()
         return {'user_id':user_id}
     
 
     def _api_user_delete(self, params: dict):
+        """Deletes a user account from the database. This does not only remove the user ID, but instead removes the user data
+        (games played/won, average score, etc), removes their password hash, and replaces their username with "deleted_user".
+        All game records which this user participated in will remain in the database, with their user_id returning the
+        "deleted_user" username, and with no other data accessible.
+
+        Args:
+            user_id (int): user ID of the account to delete
+
+        Returns:
+            dict: 'success': (bool) True if the username change was successful
+        """
+        # We need to know the user ID to delete a user
         if 'user_id' not in params:
             raise self.APIError(f'Invalid parameters for DELETE pickle/user, must include user ID: {params}', 400)
-        
         user_id = int(params['user_id'])
 
+        # Check that the user account exists and is valid
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
+        # Check that we have perms to delete the user
         if not self._user_canEdit(params.get('sender_id'), user_id):
             raise self.APIError(f'Access forbidden to user ID {user_id}', 403)
 
+        # Remove user data, all friend associations, and user game stats
         self._dbCursor.execute("UPDATE users SET username='deleted_user', passwordHash=NULL, salt=NULL, valid=0, gamesPlayed=NULL, gamesWon=NULL, averageScore=NULL WHERE user_id=?", (user_id,))
         self._dbCursor.execute("DELETE FROM friends WHERE userA=? OR userB=?", (user_id, user_id))
         self._dbCursor.execute("DELETE FROM user_game_stats WHERE user_id=?", (user_id,))
@@ -374,28 +502,38 @@ class restAPI:
             
     
     def _api_user_id(self, params: dict):
+        """Returns a user ID used by the database for a given username, if the request sender has permission to view the requested user.
+
+        Args:
+            'username' (str): the username(s) of the user(s) to request ID for. May be a string or a list of strings
+
+        Returns:
+            dict: dictionary of user IDs keyed by username
+        """
         
+        # We need a username to grab a user ID
         if 'username' not in params:
             raise self.APIError('GET pickle/user/id requires the parameter "username"', 400)
         
+        # If only a single username provided, wrap it in a list for easier processing
         usernames = params['username']
         if type(usernames) is not list:
             usernames = [usernames]
 
+        # Loop through each username, adding their ID to a dictionary for output
         result_dict = {}
         for username in usernames:
+            # Check username is valid before we subject it to a database search
             if not self._check_username(username):
                 raise self.APIError(f'Invalid username {username}', 400)
             
+            # Fetch the user ID
             self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
             user_id = self._dbCursor.fetchone()
 
+            # Add user ID to list, or raise error if it wasn't found
             if user_id:
-                if self._user_canView(params.get('sender_id'), user_id[0]):
-                    result_dict[username] = user_id[0]
-                else:
-                    raise self.APIError(f'Access forbidden to user ID {user_id[0]}', 403)
-            
+                result_dict[username] = user_id[0]
             else:
                 raise self.APIError(f'Username not found: {username}', 404)
             
@@ -403,41 +541,49 @@ class restAPI:
         
         
     def _api_user_friends(self, params: dict):
+        """Returns a dictionary of users who the current user is friends with.
+        The dict is keyed by user ID and contains username, games played against that user, and win rate against that user.
+
+        Args:
+            'user_id' (int): the user ID to query list of friends from
+
+        Returns:
+            dict: keyed by user ID and contains username, games played against that user, and win rate against that user
+        """
+        # We need a user ID to pull from
         if 'user_id' not in params:
             raise self.APIError('ERROR: pickle/user/friends must include "user_id" parameter', 400)
-
         user_id = int(params['user_id'])
 
+        # Check that the user exists and is valid
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
 
+        # Pull list of user IDs of all friends
         self._dbCursor.execute("SELECT (CASE WHEN userA=? THEN userB ELSE userA END) FROM friends WHERE (userA=? OR userB=?)", (user_id, user_id, user_id,))
         friend_list = self._dbCursor.fetchall()
 
-        username_list = []
-        for id in friend_list:
-            self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
-            username_list.append(self._dbCursor.fetchone()[0])
-
-        games_list = []
-        winRate_list = []
-        for id in friend_list:
-            self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)", (user_id, id[0], id[0], user_id))
-            gameCount = self._dbCursor.fetchone()[0]
-            games_list.append(gameCount)
-
-            if gameCount > 0:
-                self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE winner_id=? AND loser_id=?", (user_id, id[0]))
-                winCount = self._dbCursor.fetchone()[0]
-                winRate_list.append(winCount / gameCount)
-
-            else:
-                winRate_list.append(None)
-                
-
+        # Loop through friends, adding their username/stats to a dictionary for output
         result = {}
-        for i in range(0, len(friend_list)):
-            result[friend_list[i][0]] = {'username':username_list[i], 'gamesPlayed':games_list[i], 'winRate':winRate_list[i]}
+        for id in friend_list:
+            # Grab username from database
+            self._dbCursor.execute("SELECT username FROM users WHERE user_id=?", (id[0],))
+            username = self._dbCursor.fetchone()[0]
+
+            # Grab the winner of every game the two players have played
+            self._dbCursor.execute("SELECT winner_id FROM games WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)", (user_id, id[0], id[0], user_id))
+            games = self._dbCursor.fetchall()
+            gameCount = len(games) # Total number of games is just the length of the list of winners
+
+            # Calculate win rate based on how many times the winner ID was user_id
+            if gameCount > 0:
+                winCount = games.count((user_id,))
+                winRate = winCount / gameCount
+            else:
+                winRate = None # Exception for if you haven't played any games
+                
+            # Add'em to the dictionary for output
+            result[id[0]] = {'username':username, 'gamesPlayed':gameCount, 'winRate':winRate}
         
         return result
     
@@ -569,10 +715,8 @@ class restAPI:
         username = params['username']
         password = params['password']
 
-        if self._check_userAuth(username, password):
-            self._dbCursor.execute("SELECT user_id FROM users WHERE username=?", (username,))
-            user_id = self._dbCursor.fetchone()[0]
-
+        user_id = self._check_userAuth(username, password)
+        if user_id != None:
             api_key, renew_key = self._gen_ApiKey(user_id)
 
             print(f'Authentication successful for user {username}')

@@ -8,7 +8,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
 ## pickle/user
 - `pickle/user/getUsername`
     ---
-    Retrieves username of a user(s) with a given user ID(s).
+    Retrieves username(s) of user(s) with a given user ID(s).
 
     **params**:
     - `user_id`: The user_id of the account(s) to query username. May be passed as an int or a list of ints
