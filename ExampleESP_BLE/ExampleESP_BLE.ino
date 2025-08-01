@@ -684,6 +684,16 @@ float calculateForce(int analogValue) {
 }
 
 void updateQuadrantHits() {
+  // TODO: Remove this cooldown when integrating into swing detection logic
+  // Future: Use "one hit per swing" instead of global cooldown
+  static unsigned long lastHitTime = 0;
+  const unsigned long HIT_COOLDOWN = 1000;  // 1 second between hits (temporary for testing)
+  
+  // Skip if still in cooldown period
+  if (millis() - lastHitTime < HIT_COOLDOWN) {
+    return;
+  }
+  
   // For testing: only check FSR 1 (pin 36), set others to 0
   int analogValues[4] = {
     analogRead(fsr_1_pin),  // Only connected FSR
@@ -722,6 +732,7 @@ void updateQuadrantHits() {
   const float HIT_THRESHOLD_GRAMS = 500.0;  // raised to reduce false positives
   if (maxForce >= HIT_THRESHOLD_GRAMS) {
     quadrantHits[maxIndex]++;
+    lastHitTime = millis();  // Reset cooldown timer
 
     // Format BLE message
     static char hitArray[100];
