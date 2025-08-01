@@ -28,6 +28,7 @@ void main() async{
 class APIRequests {
   //current laptop IP address, change manually
   final String url = "http://10.0.0.188:80";
+  String apiToken = "";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -49,6 +50,7 @@ class APIRequests {
         Uri.parse('$url$endpoint'),
         headers: {
           'Content-Type': 'application/json',
+          "Authorization": "Bearer $apiToken",
         },
         body: json.encode(u_id)).timeout(const Duration(seconds:10));
 
@@ -87,6 +89,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(newUser),
     );
@@ -118,6 +121,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(userToSearch),
     );
@@ -158,6 +162,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -199,6 +204,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -235,9 +241,9 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': bodyBytes.length.toString(),
+        //'Content-Length': bodyBytes.length.toString(),
       },
-      body: bodyBytes,
+      body: json.encode(params),
     );
 
     print("Status: ${response.statusCode}");
@@ -278,6 +284,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -321,6 +328,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -357,6 +365,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -389,6 +398,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -425,6 +435,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -459,6 +470,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -552,6 +564,14 @@ class User extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setCacheUser(String un){
+    resetUser();
+
+    username = un;
+
+    // pals = palsList;
+  }
+
   ///reset the global user to "blank" values
   void resetUser(){
     username = "";
@@ -625,6 +645,7 @@ class BleFunctionality{
   ///connect to the selected ble status
   Future<void> connectDevice(DiscoveredDevice selectedDevice, void Function(bool) connectionStatus) async {
     //try connecting to the device
+    print("trying to connect to device");
     connection = flutterReactiveBle.connectToDevice(id: selectedDevice.id).listen((connectionState) {
       print("Connection State for device ${selectedDevice
           .name} : ${connectionState.connectionState}");
@@ -918,87 +939,6 @@ class ConnectivityCheck {
       wasOffline = !isOnline.value;
     });
 
-  }
-}
-
-///widget for logging in
-///TODO Rename
-class MyTextEntryWidget extends StatefulWidget {
-  @override
-  _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
-}
-
-class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
-  //controller variables describing the text entries
-  final TextEditingController _controller1 = TextEditingController();
-  final TextEditingController _controller2 = TextEditingController();
-
-  ///create new user and log them in
-  _createNewUser(String userName, String password) {
-
-    api.postNewUserRequest(userName, password);
-
-    _login(userName, password);
-  }
-
-  ///check for valid username and password with database then go to home
-  _login(String userName, String password) async {
-    String apiKey = await api.authorizeLogin(userName, password);
-
-    print(apiKey);
-    print("LOGIN UN: $userName");
-
-    if(apiKey != ""){
-      Provider.of<User>(context, listen: false).updateUserfromDatabase(userName);
-      Navigator.pushReplacementNamed(context, '/home');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          TextField(
-            controller: _controller1, //username entry is controlled by controller1
-            decoration: InputDecoration(
-              labelText: 'Enter username',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          SizedBox(
-            height: 16,
-          ),
-          TextField(
-            controller: _controller2, //password is controlled by controller2
-            decoration: InputDecoration(
-              labelText: 'Enter password',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              ElevatedButton(
-                onPressed: (){
-                  _login(_controller1.text, _controller2.text);
-                },
-                child: Text('Login'),
-
-              ),
-              SizedBox(width: 16,),
-              ElevatedButton(
-                  onPressed: (){
-                    _createNewUser(_controller1.text, _controller2.text);
-                  },
-                  child: Text("Create New User")
-              )
-            ],
-          )
-        ]
-      ),
-    );
   }
 }
 
@@ -2146,6 +2086,67 @@ class _LoginPageState extends State<LoginPage> {
   //corresponds to selection of checkbox where user can save login
   bool saveChecked = false;
 
+  final TextEditingController _controller1 = TextEditingController();
+  final TextEditingController _controller2 = TextEditingController();
+
+  void cacheUser(String un, String pw) async{
+    Map<String, dynamic> userToSave = {
+      'username': un.trim(),
+      'password': pw.trim(),
+      // 'friends_list': context.read<User>().pals
+    };
+
+    // print("friends list ${userToSave['friends_list']}");
+
+    final cacheBox = await Hive.openBox("userQueue");
+    await cacheBox.add(userToSave);
+
+    print("user cached");
+  }
+
+  void getCachedUser(String enteredUn, String enteredPw) async {
+    final cacheBox = await Hive.openBox("userQueue");
+    final cacheBoxKeys = cacheBox.keys.toList();
+    final key = cacheBoxKeys[0];
+
+    final userData = cacheBox.get(key);
+
+    //TODO test cached user
+    if(enteredUn == userData['username'].trim() && enteredPw == userData['password'].trim()){
+      context.read<User>().setCacheUser(userData['username']);
+    }
+
+  }
+
+  ///create new user and log them in
+  _createNewUser(String userName, String password) {
+
+    api.postNewUserRequest(userName, password);
+
+    _login(userName, password);
+  }
+
+  ///check for valid username and password with database then go to home
+  _login(String userName, String password) async {
+    if(internetConnection.isOnline.value){
+      String apiKey = await api.authorizeLogin(userName, password);
+      api.apiToken =  apiKey;
+
+      print(apiKey);
+      print("LOGIN UN: $userName");
+
+      if(apiKey != ""){
+        Provider.of<User>(context, listen: false).updateUserfromDatabase(userName);
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    }
+    else{
+      getCachedUser(userName.trim(), password.trim());
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+
+  }
+
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -2155,7 +2156,42 @@ class _LoginPageState extends State<LoginPage> {
       body: Center(
         child: Column(
           children: [
-            MyTextEntryWidget(), //widget holding text entries and button
+            TextField(
+              controller: _controller1, //username entry is controlled by controller1
+              decoration: InputDecoration(
+                labelText: 'Enter username',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(
+              height: 16,
+            ),
+            TextField(
+              controller: _controller2, //password is controlled by controller2
+              decoration: InputDecoration(
+                labelText: 'Enter password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: (){
+                    _login(_controller1.text, _controller2.text);
+                  },
+                  child: Text('Login'),
+
+                ),
+                SizedBox(width: 16,),
+                ElevatedButton(
+                    onPressed: (){
+                      _createNewUser(_controller1.text, _controller2.text);
+                    },
+                    child: Text("Create New User")
+                )
+              ],
+            ), //widget holding text entries and button
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
@@ -2171,9 +2207,16 @@ class _LoginPageState extends State<LoginPage> {
                 Checkbox(
                     value: saveChecked,
                     onChanged: (bool ? newValue) {
-                      setState(() {
-                        saveChecked = newValue!;
-                      });
+                      if(newValue != null){
+                        setState(() {
+                          saveChecked = newValue;
+                        });
+
+                        if(newValue){
+                          cacheUser(_controller1.text, _controller2.text);
+                        }
+                      }
+
                     }
                 )
               ],
