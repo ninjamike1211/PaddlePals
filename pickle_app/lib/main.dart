@@ -41,7 +41,7 @@ class APIRequests {
 
     print(u_id);
     //the endpoint for the api to call in rest_api.md
-    String endpoint = "/pickle/user/get";
+    String endpoint = "/pickle/user/getStats";
     print("$endpoint");
     //NOTE Authorization header for authorization api (look up standard authorization header, Bearer)
 
@@ -458,11 +458,10 @@ class APIRequests {
 
     Map<String, dynamic> params = {
       'user_id': userId,
-      'values' : 'username'
     };
 
     print(params);
-    String endpoint = "/pickle/user/get";
+    String endpoint = "/pickle/user/getUsername";
     print("$endpoint");
 
 
@@ -542,6 +541,9 @@ class User extends ChangeNotifier {
     Map<String, dynamic> newUserMap = await api.getUserRequest(id_num);
     Map<String, dynamic> userMap = newUserMap[id_string];
 
+    Map<String,dynamic> usernameMap = await api.getUsername(id_num);
+    print("USERNAME MAP: $usernameMap");
+
     Map<String, dynamic> friendMap = await api.getFriends(newUserName);
 
     List<Map<String, dynamic>> friendList = [];
@@ -550,7 +552,7 @@ class User extends ChangeNotifier {
       friendList.add(data);
     });
 
-    username = userMap['username'];
+    username = usernameMap[id_string];
     gamesPlayed = userMap['gamesPlayed'];
     gamesWon = userMap['gamesWon'];
     avgScore = userMap['averageScore'];
@@ -1731,8 +1733,8 @@ class _HistoryPageState extends State<HistoryPage> {
         //use the winner id to find the username of the winner
         var winnerId = gameMap[gameIdString]?["winner_id"];
         Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
-        String winnerIdString =  winnerId.toString();
-        String winnerName = winnerMap[winnerIdString]['username'];
+        print("WINNER MAP: ${winnerMap}");
+        String winnerName = winnerMap[winnerId.toString()];
         //check if the user is the winner
         if (winnerName == username){
           //the user is the winner so save id
@@ -1740,8 +1742,7 @@ class _HistoryPageState extends State<HistoryPage> {
           //get the loser id and username
           int loserID = gameMap[gameIdString]['loser_id'];
           Map<String, dynamic> loserMap = await api.getUsername(loserID);
-          String loserIdString = loserID.toString();
-          String loserName = loserMap[loserIdString]['username'];
+          String loserName = loserMap[loserID.toString()];
           //change loser id locally to be better for ui
           gameMap['loser_id'] = loserName;
           //add date_time to format unix timestamp better for ui
@@ -1772,7 +1773,7 @@ class _HistoryPageState extends State<HistoryPage> {
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString =  loserId.toString();
-        String loserName = loserMap[loserIdString]['username'];
+        String loserName = loserMap[loserIdString];
         //check if user is the loser
         if (loserName == username){
           //user is the loser so add game to list of loss ids
@@ -1781,7 +1782,7 @@ class _HistoryPageState extends State<HistoryPage> {
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
+          String winnerName = winnerMap[winnerIdString];
           //replace winner id with winner name locally to better suit ui
           gameMap['winner_id'] = winnerName;
           //add date_time to format unix timestamp better for ui
@@ -1811,14 +1812,14 @@ class _HistoryPageState extends State<HistoryPage> {
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString = loserId.toString();
-        String loserName = loserMap[loserIdString]['username'];
+        String loserName = loserMap[loserIdString];
         //user loses
         if (loserName == username) {
           //use winner id to get opponent name
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
+          String winnerName = winnerMap[winnerIdString];
           //update game map to better display info
           gameMap['opponent_name'] = winnerName;
           gameMap['my_points'] =  gameMap[gameIdString]['loser_points'];
