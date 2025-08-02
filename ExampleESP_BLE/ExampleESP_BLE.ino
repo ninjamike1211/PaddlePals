@@ -713,7 +713,7 @@ void updateQuadrantHits() {
     return;
   }
   
-  // For testing: only check FSR 1 (pin 36), set others to 0
+  // For testing: only check FSR 1 (pin 35), set others to 0
   int analogValues[4] = {
     analogRead(fsr_1_pin),  // Only connected FSR
     0,                      // Disconnected - force to 0
@@ -748,7 +748,7 @@ void updateQuadrantHits() {
   }
 
   // Only count hits above noise threshold  
-  const float HIT_THRESHOLD_GRAMS = 500.0;  // raised to reduce false positives
+  const float HIT_THRESHOLD_GRAMS = 5.0;  // raised to reduce false positives
   if (maxForce >= HIT_THRESHOLD_GRAMS) {
     quadrantHits[maxIndex]++;
     lastHitTime = millis();  // Reset cooldown timer
