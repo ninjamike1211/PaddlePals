@@ -833,7 +833,7 @@ class restAPI:
             raise self.APIError(f'Invalid game type {game_type}', 400)
         
         if winner_points > 11:
-            if winner_points - loser_points != 2:
+            if winner_points - loser_points != 2 and winner_points < 15:
                 raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
         elif winner_points < 11:
             raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
