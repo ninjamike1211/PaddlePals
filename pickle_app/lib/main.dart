@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.23.8:80";
   String apiToken = "";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
@@ -260,11 +260,17 @@ class APIRequests {
 
   ///save a completed game to the database
   Future<Map<String, dynamic>> registerGame(int timestamp, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async{
-    Map<String, dynamic> winner_id = await getUserID(winnerName);
-    final int winner_id_num = winner_id[winnerName];
+    int winner_id_num = -1;
+    int loser_id_num = -1;
 
-    Map<String, dynamic> loser_id = await getUserID(loserName);
-    final int loser_id_num = loser_id[loserName];
+    if(winnerName != "Opponent"){
+      Map<String, dynamic> winner_id = await getUserID(winnerName);
+      winner_id_num = winner_id[winnerName];
+    }
+    if(loserName != "Opponent"){
+      Map<String, dynamic> loser_id = await getUserID(loserName);
+      loser_id_num = loser_id[loserName];
+    }
 
     Map<String, dynamic> params = {
       'timestamp': timestamp,
@@ -347,7 +353,6 @@ class APIRequests {
   }
 
   ///get a list of game id numbers the given user has participated in
-  //TODO add sorting options (should just need add parameter, adjust params accordingly)
   Future<Map<String, dynamic>> getUsersGames(String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
@@ -563,6 +568,11 @@ class User extends ChangeNotifier {
 
   void setOpponent(String opponentName){
     opponent = opponentName;
+    notifyListeners();
+  }
+
+  void setPals(List<Map<String,dynamic>> newPalsList){
+    pals = newPalsList;
     notifyListeners();
   }
 
@@ -1206,12 +1216,6 @@ class _GamePageState extends State<GamePage> {
     int winnerPoints = -1;
     int loserPoints = -1;
 
-    //handle no registered opponent
-    if (game.opponentName == "Opponent"){
-      //eventually change to NULL user
-      game.opponentName = "testUser"; //TODO change to anonymous user
-    }
-
     if(game.getWinner() == "me"){
       winnerName = context.read<User>().username;
       loserName = game.opponentName;
@@ -1236,7 +1240,6 @@ class _GamePageState extends State<GamePage> {
       print("Online. Sending game to database $un");
     }
     else{
-      //TODO test game stat caching, BLE disconnected with wifi(could be bc app is sent to background when setting airplane mode, can turn wifi mode off on esp)
       //try just turning off wifi instead of full airplane mode
       cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax);
       print("Offline. Caching game data");
@@ -1367,33 +1370,15 @@ class _GamePageState extends State<GamePage> {
       final data = myBLE.latestHitData.value;
       if (data != null) { //new data has been received and a game has been started
         if (game.inProgress) {
-          int q1Idx = data.indexOf(":");
-          int q2Idx = data.indexOf(",Q2 Hits");
-          int q3Idx = data.indexOf(",Q3 Hits");
-          int q4Idx = data.lastIndexOf(":");
-          int length = data.length;
-          try{
-            tempQ1 = int.parse(data.substring(q1Idx + 2, q2Idx));
-          } catch(e){
-            print("error parsing q1 hits $e");
-          }
-          try{
-            tempQ2 = int.parse(data.substring(q2Idx + 10, q3Idx));
-          }catch(e){
-            print("error parsing q2 hits $e");
-          }
-          try{
-            tempQ3 = int.parse(data.substring(q3Idx + 10, q4Idx));
-          }catch(e){
-            print("error parsing q3 hits $e");
-          }
-          try{
-            tempQ4 = int.parse(data.substring(q4Idx + 10, length));
-          }catch(e){
-            print("error parsing q4 hits $e");
-          }
+          print("Hit data: $data");
+          //split the comma separated data
+          List<String> parts = data.split(',');      // Split by commas
+          List<int> hits = parts.map(int.parse).toList();; //get the integers and put into list
+
+          print("Hits: $hits");
+
           setState(() {
-            game.newHit(tempQ1, tempQ2, tempQ3, tempQ4);
+            game.newHit(hits[0], hits[1], hits[2], hits[3]);
           });
         } else {
           print("hit will not count until game is started");
@@ -1533,10 +1518,31 @@ class _SocialPageState extends State<SocialPage> {
     loadUser();
   }
 
+  void friendCaching() async {
+    final cacheBox = await Hive.openBox("friendQueue");
+    if(internetConnection.isOnline.value && cacheBox.isEmpty){
+      final friendsToSave = context.read<User>().pals;
+      await cacheBox.add(friendsToSave);
+      print("connection, saving pals");
+    }
+    else if(!internetConnection.isOnline.value && cacheBox.isNotEmpty){
+      final cacheBoxKeys = cacheBox.keys.toList();
+      final key = cacheBoxKeys[0];
+
+      final friendData = cacheBox.get(key);
+      context.read<User>().setPals(friendData);
+
+      print("no connection, displaying saved pals");
+    }
+  }
+
   ///refresh user everytime the page is built to keep friends updated
   Future<void> loadUser() async {
     final username = context.read<User>().username;
-    await context.read<User>().updateUserfromDatabase(username);
+    if(internetConnection.isOnline.value){
+      await context.read<User>().updateUserfromDatabase(username);
+    }
+    friendCaching();
     setState(() {
       isLoading = false;
     });
@@ -2073,7 +2079,6 @@ class _HistoryPageState extends State<HistoryPage> {
 }
 
 ///page where user logs in
-//TODO create user saving option, look at Michael's new code
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
 
@@ -2112,7 +2117,6 @@ class _LoginPageState extends State<LoginPage> {
 
     final userData = cacheBox.get(key);
 
-    //TODO test cached user
     if(enteredUn == userData['username'].trim() && enteredPw == userData['password'].trim()){
       context.read<User>().setCacheUser(userData['username']);
     }
@@ -2157,21 +2161,28 @@ class _LoginPageState extends State<LoginPage> {
       body: Center(
         child: Column(
           children: [
-            TextField(
-              controller: _controller1, //username entry is controlled by controller1
-              decoration: InputDecoration(
-                labelText: 'Enter username',
-                border: OutlineInputBorder(),
+            SizedBox(height: 16,),
+            SizedBox(
+              width: 350,
+              child: TextField(
+                controller: _controller1, //username entry is controlled by controller1
+                decoration: InputDecoration(
+                  labelText: 'Enter username',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             SizedBox(
               height: 16,
             ),
-            TextField(
-              controller: _controller2, //password is controlled by controller2
-              decoration: InputDecoration(
-                labelText: 'Enter password',
-                border: OutlineInputBorder(),
+            SizedBox(
+              width: 350,
+              child: TextField(
+                controller: _controller2, //password is controlled by controller2
+                decoration: InputDecoration(
+                  labelText: 'Enter password',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -2332,7 +2343,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Text("Logout")
             ),
             Expanded(
-              child: ListView.builder(
+              child: ListView.builder( //TODO add connect ui, disconnect
                   itemCount: devices.length,
                   itemBuilder: (context, index) {
                     final device = devices[index];
