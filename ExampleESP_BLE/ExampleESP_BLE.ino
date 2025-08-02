@@ -275,11 +275,26 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
         // Update the 7‑segment displays with 0s
         updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
 
+        // Clear hit detection
+        for (int i = 0; i < 4; i++) {
+          quadrantHits[i] = 0;
+        }
+
         // Notify the phone of the new score
         char buf[20];
         snprintf(buf, sizeof(buf), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
         scoreChar->setValue(buf);
         scoreChar->notify();
+        
+        // Notify the phone of the reset hit summary
+        char hitArray[100];
+        snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d", 
+                 quadrantHits[0], quadrantHits[1], quadrantHits[2], quadrantHits[3]);
+        if (hitSummaryChar != nullptr) {
+          hitSummaryChar->setValue(hitArray);
+          hitSummaryChar->notify();
+        }
+        
         Serial.println("Scores reset to 0,0");
       }
     }
@@ -996,3 +1011,4 @@ void loop() {
     sentInitialScore = false;
   }
 }
+
