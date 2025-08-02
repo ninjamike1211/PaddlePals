@@ -67,9 +67,9 @@ def test_friends(tmp_path):
         apiKey = response.json()['apiKey']
 
         # Verify userA can't access users B/C
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userB'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userC'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':3}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
 
         # Verify no friends
@@ -108,7 +108,7 @@ def test_friends(tmp_path):
         assert response.json() == {'3':{'username':'userC', 'gamesPlayed':0, 'winRate':None}}
 
         # Verify we can no longer access userB
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userB'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
         
 
