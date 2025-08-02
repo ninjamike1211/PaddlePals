@@ -736,7 +736,7 @@ void updateQuadrantHits() {
 
     // Format BLE message
     static char hitArray[100];
-    snprintf(hitArray, sizeof(hitArray), "Q1 Hits: %d,Q2 Hits: %d,Q3 Hits: %d,Q4 Hits: %d", 
+    snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d", 
              quadrantHits[0], quadrantHits[1], quadrantHits[2], quadrantHits[3]);
 
     Serial.println(hitArray);
