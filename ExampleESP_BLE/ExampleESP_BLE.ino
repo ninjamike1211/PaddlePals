@@ -60,21 +60,25 @@
 #define seg1_f 23
 #define seg1_g 19
 
-// Segment pins for display 2
-#define seg2_a 4
-#define seg2_b 2
-#define seg2_c 25
-#define seg2_d 26
-#define seg2_e 34
-#define seg2_f 32
-#define seg2_g 33
+// Segment pins for display 2 (moved to avoid FSR conflicts)
+#define seg2_a 32
+#define seg2_b 12
+#define seg2_c 4  // was 25 (conflicts with fsr_4_pin)
+#define seg2_d 0
+#define seg2_e 2
+#define seg2_f 22
+#define seg2_g 21  // was 33 (conflicts with fsr_2_pin)
 
 // Pins for FSRs
 
-#define fsr_1_pin 36
-#define fsr_2_pin 39
-#define fsr_3_pin 12
-#define fsr_4_pin 14
+#define fsr_1_pin 35
+#define fsr_2_pin 34
+#define fsr_3_pin 27
+#define fsr_4_pin 25
+
+// Pins for accelerometer
+#define SCL_PIN 33
+#define SDA_PIN 26
 
 // Constants to connect to the ESP32 via OTA
 // TEMPORARILY DISABLED TO SAVE SPACE
