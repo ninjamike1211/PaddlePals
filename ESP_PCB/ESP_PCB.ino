@@ -1,4 +1,4 @@
-// Credit to Evandro Copercini for original example code: 
+// Credit to Evandro Copercini for original example code:
 // https://docs.espressif.com/projects/arduino-esp32/en/latest/api/bluetooth.html
 
 // Credit to Rui Santos for example on interfacing the ESP-32 with outside components and processing messages
@@ -64,8 +64,8 @@
 #define seg2_a 32
 #define seg2_b 12
 #define seg2_c 4  // was 25 (conflicts with fsr_4_pin)
-#define seg2_d 0
-#define seg2_e 2
+#define seg2_d 27  // moved from GPIO 0
+#define seg2_e 25  // moved from GPIO 2
 #define seg2_f 22
 #define seg2_g 21  // was 33 (conflicts with fsr_2_pin)
 
@@ -73,8 +73,8 @@
 
 #define fsr_1_pin 35
 #define fsr_2_pin 34
-#define fsr_3_pin 27
-#define fsr_4_pin 25
+#define fsr_3_pin 36  // moved from 27 (safe input-only pin)
+#define fsr_4_pin 39  // moved from 25 (safe input-only pin)
 
 // Pins for accelerometer
 #define SCL_PIN 33
@@ -100,31 +100,31 @@ const char* serverIndex =
 */
 
 // Create array to get quadrant hits
-int quadrantHits[4] = {0, 0, 0, 0};  // Q1-Q4 hit counts
+int quadrantHits[4] = { 0, 0, 0, 0 };  // Q1-Q4 hit counts
 
 // Create table to store correct states for segments corresponding to digits
 const bool digitSegments[16][7] = {
-  {1,1,1,1,1,1,0}, // 0
-  {0,1,1,0,0,0,0}, // 1
-  {1,1,0,1,1,0,1}, // 2
-  {1,1,1,1,0,0,1}, // 3
-  {0,1,1,0,0,1,1}, // 4
-  {1,0,1,1,0,1,1}, // 5
-  {1,0,1,1,1,1,1}, // 6
-  {1,1,1,0,0,0,0}, // 7
-  {1,1,1,1,1,1,1}, // 8
-  {1,1,1,1,0,1,1}, // 9
-  {1,1,1,0,1,1,1}, // A
-  {0,0,1,1,1,1,1}, // b
-  {1,0,0,1,1,1,0}, // C
-  {0,1,1,1,1,0,1}, // d
-  {1,0,0,1,1,1,1}, // E
-  {1,0,0,0,1,1,1}  // F
+  { 1, 1, 1, 1, 1, 1, 0 },  // 0
+  { 0, 1, 1, 0, 0, 0, 0 },  // 1
+  { 1, 1, 0, 1, 1, 0, 1 },  // 2
+  { 1, 1, 1, 1, 0, 0, 1 },  // 3
+  { 0, 1, 1, 0, 0, 1, 1 },  // 4
+  { 1, 0, 1, 1, 0, 1, 1 },  // 5
+  { 1, 0, 1, 1, 1, 1, 1 },  // 6
+  { 1, 1, 1, 0, 0, 0, 0 },  // 7
+  { 1, 1, 1, 1, 1, 1, 1 },  // 8
+  { 1, 1, 1, 1, 0, 1, 1 },  // 9
+  { 1, 1, 1, 0, 1, 1, 1 },  // A
+  { 0, 0, 1, 1, 1, 1, 1 },  // b
+  { 1, 0, 0, 1, 1, 1, 0 },  // C
+  { 0, 1, 1, 1, 1, 0, 1 },  // d
+  { 1, 0, 0, 1, 1, 1, 1 },  // E
+  { 1, 0, 0, 0, 1, 1, 1 }   // F
 };
 
 // Group the seven segment display pins based on display number
-int segPins1[] = {seg1_a, seg1_b, seg1_c, seg1_d, seg1_e, seg1_f, seg1_g};
-int segPins2[] = {seg2_a, seg2_b, seg2_c, seg2_d, seg2_e, seg2_f, seg2_g};
+int segPins1[] = { seg1_a, seg1_b, seg1_c, seg1_d, seg1_e, seg1_f, seg1_g };
+int segPins2[] = { seg2_a, seg2_b, seg2_c, seg2_d, seg2_e, seg2_f, seg2_g };
 
 // Create Button2 button
 Button2 buttonIncrement;
@@ -191,16 +191,16 @@ float swingPeakMagnitude = 0.0f;
 unsigned long swingStartTime = 0;
 
 // Adjusted threshold: 0.133 -> 0.4 -> 0.60 -> 0.70
-const float swingThreshold = 0.70;  // m/s threshold
-const unsigned long swingCooldown = 500; // milliseconds
+const float swingThreshold = 0.70;        // m/s threshold
+const unsigned long swingCooldown = 500;  // milliseconds
 unsigned long lastSwingEndTime = 0;
 
 // Timer variables
 // Stores last time temperature was published
-unsigned long previousMillis = 0;    
+unsigned long previousMillis = 0;
 
 // Time interval at which to publish data
-const long interval = 5000;  
+const long interval = 5000;
 
 // Global tracking variables (use for latency tracking and dealing with overflow)
 uint64_t extendedMicros = 0;
@@ -215,21 +215,21 @@ unsigned long latency;
 // Char arrays for values
 char pointsString[50];
 char newSwingString[50];
-char maxSwingString[50]; 
+char maxSwingString[50];
 char latencyString[100];
 bool messageFinishedSending = false;
 
 // Seven-segment code
 // Update seven segment displays
 void updateSevenSegmentDisplays(int playerScore, int opponentScore) {
-  displayDigit(playerScore, segPins1);   // left digit
+  displayDigit(playerScore, segPins1);    // left digit
   displayDigit(opponentScore, segPins2);  // right digit
 }
 
 // Clear seven segment displays
 void clearSevenSegmentDisplays() {
   for (int i = 0; i < 7; i++) {
-    digitalWrite(segPins1[i], LOW);   // LOW = off for common cathode
+    digitalWrite(segPins1[i], LOW);  // LOW = off for common cathode
     digitalWrite(segPins2[i], LOW);
   }
 }
@@ -244,7 +244,7 @@ void displayDigit(int digit, int segPins[]) {
 }
 
 //Setup callbacks onConnect and onDisconnect
-class MyServerCallbacks: public BLEServerCallbacks {
+class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
     Serial.println("Device connected via BLE");
@@ -270,7 +270,7 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
     if (pChar->getUUID().toString() == SCORE_CHAR_UUID) {
       if (val == "RESET") {
         // Reset game state
-        pointsThisGame  = 0;
+        pointsThisGame = 0;
         opponentPoints = 0;
         gameStarted = false;
         clearSevenSegmentDisplays();
@@ -288,16 +288,16 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
         snprintf(buf, sizeof(buf), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
         scoreChar->setValue(buf);
         scoreChar->notify();
-        
+
         // Notify the phone of the reset hit summary
         char hitArray[100];
-        snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d", 
+        snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d",
                  quadrantHits[0], quadrantHits[1], quadrantHits[2], quadrantHits[3]);
         if (hitSummaryChar != nullptr) {
           hitSummaryChar->setValue(hitArray);
           hitSummaryChar->notify();
         }
-        
+
         Serial.println("Scores reset to 0,0");
       }
     }
@@ -318,17 +318,23 @@ void calibrateGyro() {
   Serial.println("Hold the board still. Calibrating...");
 
   float sumX = 0, sumY = 0, sumZ = 0;
-  const int samples = 200;
+  const int samples = 50;  // Reduced from 200 to 50
 
   for (int i = 0; i < samples; i++) {
+    // Add watchdog feed to prevent resets
+    yield();
+    
     sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+    if (!mpu.getEvent(&a, &g, &temp)) {
+      Serial.println("MPU read failed during calibration");
+      return;
+    }
 
     sumX += g.gyro.x;
     sumY += g.gyro.y;
     sumZ += g.gyro.z;
 
-    delay(5);  // small delay to simulate ~1kHz
+    delay(10);  // Increased from 5ms to 10ms
   }
 
   gyroX_offset = sumX / samples;
@@ -336,8 +342,10 @@ void calibrateGyro() {
   gyroZ_offset = sumZ / samples;
 
   Serial.print("Calibration complete. Offsets: ");
-  Serial.print(gyroX_offset, 4); Serial.print(", ");
-  Serial.print(gyroY_offset, 4); Serial.print(", ");
+  Serial.print(gyroX_offset, 4);
+  Serial.print(", ");
+  Serial.print(gyroY_offset, 4);
+  Serial.print(", ");
   Serial.println(gyroZ_offset, 4);
 }
 
@@ -350,11 +358,11 @@ void initAccelerometer() {
   Serial.print(SDA_PIN);
   Serial.print(", SCL=");
   Serial.println(SCL_PIN);
-  
+
   // Scan for I2C devices
   Serial.println("Scanning I2C bus...");
   int nDevices = 0;
-  for(byte address = 1; address < 127; address++) {
+  for (byte address = 1; address < 127; address++) {
     Wire.beginTransmission(address);
     byte error = Wire.endTransmission();
     if (error == 0) {
@@ -371,7 +379,7 @@ void initAccelerometer() {
     Serial.print(nDevices);
     Serial.println(" I2C device(s)");
   }
-  
+
   // Initialization - BYPASSED FOR TESTING
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip - BYPASSING FOR NOW");
@@ -447,47 +455,45 @@ void initAccelerometer() {
 
 void initBLECharacteristics(BLEService* service) {
   Serial.println("Initializing BLE characteristics...");
-  
+
   // Create score characteristic
   Serial.println("Creating score characteristic...");
   scoreChar = service->createCharacteristic(
     SCORE_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
-  );
-  
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE);
+
   if (scoreChar == nullptr) {
     Serial.println("ERROR: Failed to create score characteristic!");
     return;
   }
-  
+
   // Add descriptors to score characteristic
   scoreDesc = new BLEDescriptor((uint16_t)0x2901);
   scoreDesc->setValue("Current Score of Player");
   scoreChar->addDescriptor(scoreDesc);
-  
+
   // Add CCCD for notifications
   BLE2902* scoreCCCD = new BLE2902();
   scoreCCCD->setNotifications(true);
   scoreChar->addDescriptor(scoreCCCD);
-  
+
   // Add callback
   scoreChar->setCallbacks(new MyCharacteristicCallbacks());
   Serial.println("Score characteristic setup complete");
 
-    // Create new swing speed characteristic
+  // Create new swing speed characteristic
   Serial.println("Creating new swing speed characteristic...");
   newSwingSpeedChar = service->createCharacteristic(
     MAX_SWING_SPEED_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
   if (newSwingSpeedChar == nullptr) {
     Serial.println("ERROR: Failed to create new swing speed characteristic!");
     return;
   }
-  
+
   newSwingSpeedDesc = new BLEDescriptor((uint16_t)0x2901);
-	newSwingSpeedDesc->setValue("Individual Swing Speed");
+  newSwingSpeedDesc->setValue("Individual Swing Speed");
 
   newSwingSpeedChar->addDescriptor(newSwingSpeedDesc);
   newSwingSpeedChar->addDescriptor(new BLE2902());
@@ -496,23 +502,21 @@ void initBLECharacteristics(BLEService* service) {
   Serial.println("Creating hit summary characteristic...");
   hitSummaryChar = service->createCharacteristic(
     HIT_SUMMARY_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
   if (hitSummaryChar == nullptr) {
     Serial.println("ERROR: Failed to create new hit summary characteristic!");
     return;
   }
-  
+
   hitSummaryDesc = new BLEDescriptor((uint16_t)0x2901);
   hitSummaryDesc->setValue("Hit Summary");
   hitSummaryChar->addDescriptor(hitSummaryDesc);
   hitSummaryChar->addDescriptor(new BLE2902());
   Serial.println("Hit summary setup complete");
 
-  
-  Serial.println("BLE characteristics initialization complete");
 
+  Serial.println("BLE characteristics initialization complete");
 }
 
 void initSevenSegmentDisplays() {
@@ -623,14 +627,14 @@ void incrementPoints() {
 
 void clickHandler(Button2& btn) {
   bool scoreChanged = false;
-  
+
   // Start the game
   if (btn == buttonIncrement && !gameStarted) {
     gameStarted = true;
     Serial.println("Game started!");
     // Update display to show 0,0 when game starts
     updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
-    scoreChanged = true; // Force BLE update
+    scoreChanged = true;  // Force BLE update
   }
   // Player score button (increment button) during game
   else if (btn == buttonIncrement && gameStarted) {
@@ -661,7 +665,7 @@ void clickHandler(Button2& btn) {
   if (deviceConnected) {
     static char scoreArray[50];
     snprintf(scoreArray, sizeof(scoreArray), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
-    
+
     if (&scoreChar == nullptr) {
       Serial.println("ERROR: scoreChar is NULL");
     } else {
@@ -684,15 +688,15 @@ float checkMaxSwingSpeed(float swingSpeed) {
 }
 
 int calculateTotalPointsAllTime(int pastNumberOfPoints) {
-    pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
-    return pastNumberOfPoints;
+  pastNumberOfPoints = pastNumberOfPoints + pointsThisGame;
+  return pastNumberOfPoints;
 }
 
 bool checkAllTimeSwingSpeed(int pastMaxSwingSpeed) {
-    if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
-        return true;
-    }
-    return false;
+  if (currentMaxSwingSpeed > pastMaxSwingSpeed) {
+    return true;
+  }
+  return false;
 }
 
 float calculateAveragePointsPerGame(int numberOfGames, int totalNumberOfPoints) {
@@ -711,8 +715,7 @@ float calculateSwingSpeed(float xVelocity, float yVelocity, float zVelocity, boo
   if (useBias) {
     // Bias towards the x direction, since given the orientation and forehand/backhand, moving moreso on x axis
     angVelocity = sqrt(1.0 * pow(xVelocity, 2) + 0.3 * pow(yVelocity, 2) + 0.4 * pow(zVelocity, 2));
-  }
-  else {
+  } else {
     angVelocity = sqrt(pow(xVelocity, 2) + pow(yVelocity, 2) + pow(zVelocity, 2));
   }
 
@@ -748,15 +751,15 @@ void updateQuadrantHits() {
   // Future: Use "one hit per swing" instead of global cooldown
   static unsigned long lastHitTime = 0;
   const unsigned long HIT_COOLDOWN = 1000;  // 1 second between hits (temporary for testing)
-  
+
   // Skip if still in cooldown period
   if (millis() - lastHitTime < HIT_COOLDOWN) {
     return;
   }
-  
-  // For testing: only check FSR 1 (pin 35), set others to 0
+
+  // For testing: disable all FSRs since none are connected
   int analogValues[4] = {
-    analogRead(fsr_1_pin),  // Only connected FSR
+    0,                      // FSR1 disabled - no sensor connected
     0,                      // Disconnected - force to 0
     0,                      // Disconnected - force to 0
     0                       // Disconnected - force to 0
@@ -788,7 +791,7 @@ void updateQuadrantHits() {
     }
   }
 
-  // Only count hits above noise threshold  
+  // Only count hits above noise threshold
   const float HIT_THRESHOLD_GRAMS = 5.0;  // raised to reduce false positives
   if (maxForce >= HIT_THRESHOLD_GRAMS) {
     quadrantHits[maxIndex]++;
@@ -796,7 +799,7 @@ void updateQuadrantHits() {
 
     // Format BLE message
     static char hitArray[100];
-    snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d", 
+    snprintf(hitArray, sizeof(hitArray), "%d,%d,%d,%d",
              quadrantHits[0], quadrantHits[1], quadrantHits[2], quadrantHits[3]);
 
     Serial.println(hitArray);
@@ -823,7 +826,7 @@ void setup() {
 
   // Setup seven-segment displays
   initSevenSegmentDisplays();
-  
+
   // Display initial scores (0,0)
   updateSevenSegmentDisplays(pointsThisGame, opponentPoints);
 
@@ -844,11 +847,11 @@ void setup() {
   BLEDevice::init(bleServerName);
 
   // Create the BLE Server
-  BLEServer *server = BLEDevice::createServer();
+  BLEServer* server = BLEDevice::createServer();
   server->setCallbacks(new MyServerCallbacks());
 
   // Create the BLE Service
-  BLEService *service = server->createService(SERVICE_UUID);
+  BLEService* service = server->createService(SERVICE_UUID);
 
   // Initialize the characteristics
   initBLECharacteristics(service);
@@ -905,13 +908,13 @@ void loop() {
     static bool sentInitialScore = false;
 
     static unsigned long connectionTime = 0;
-    
+
     // Record when we first connected
     if (!sentInitialScore && connectionTime == 0) {
       connectionTime = millis();
     }
 
-        // Wait 1 second after connection before sending initial score
+    // Wait 1 second after connection before sending initial score
     if (deviceConnected && !sentInitialScore && (millis() - connectionTime > 1000)) {
       if (scoreChar != nullptr) {
         scoreChar->setValue("0");
@@ -944,7 +947,7 @@ void loop() {
       float weightedSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, USE_DIRECTIONAL_BIAS);
 
       // Compute true (unbiased) swing speed for reporting
-      float magnitudeSpeed  = calculateSwingSpeed(cleanX, cleanY, cleanZ, /*useBias*/ false);
+      float magnitudeSpeed = calculateSwingSpeed(cleanX, cleanY, cleanZ, /*useBias*/ false);
 
       // Use following for graphing purposes
       // Print the current time, the current swing speed, and if the swing is active
@@ -960,7 +963,7 @@ void loop() {
       // Calculate magnitude of total acceleration - we wsill use this along with the swingThreshold to record a swing
       float accelMagnitude = sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2));
       // Remove gravity from triggering swings by itself
-      float accDynamic = fabs(accelMagnitude - 9.80665f);     // remove gravity
+      float accDynamic = fabs(accelMagnitude - 9.80665f);  // remove gravity
 
       if (!swingActive) {
         // Start of a new swing
@@ -986,10 +989,10 @@ void loop() {
 
           // Send individual swing speed over BLE
           snprintf(newSwingString, sizeof(newSwingString), "%.2f", swingPeakMagnitude);
-          
+
           // Still track max for internal use but send individual swing
           float currentMax = checkMaxSwingSpeed(swingPeakMagnitude);
-          
+
           // Send the individual swing speed (not the max)
           if (newSwingSpeedChar) {
             newSwingSpeedChar->setValue(newSwingString);
@@ -1009,48 +1012,48 @@ void loop() {
 
     // If the interval has passed, get and send data to phone
     if (currentMillis - previousMillis >= interval) {
-        previousMillis = currentMillis;
+      previousMillis = currentMillis;
 
 
-        // Generate value from 0 to 100 for probability
-        // int randProbability = random(0, 100);
+      // Generate value from 0 to 100 for probability
+      // int randProbability = random(0, 100);
 
-        // If value >= 50, increment, otherwise, don't
-        // Basically 50/50 probability every 5 seconds if score is updated
-        // if (randProbability >= 50) {
-          // incrementPoints();
-        // }
+      // If value >= 50, increment, otherwise, don't
+      // Basically 50/50 probability every 5 seconds if score is updated
+      // if (randProbability >= 50) {
+      // incrementPoints();
+      // }
 
-        // Send stats over in string format
-        snprintf(pointsString, sizeof(pointsString), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
-        
-        // After calculations, start the transmission timer
-        // Note - this can overflow after 70 min of arduino runtime - might need to fix later
-        startTransmissionTime = getSafeMicros();
+      // Send stats over in string format
+      snprintf(pointsString, sizeof(pointsString), "%d,%d,%d", pointsThisGame, opponentPoints, gameStarted);
 
-        
-        if (scoreChar != nullptr) {
-          scoreChar->setValue(pointsString);
-          scoreChar->notify();
-        }
+      // After calculations, start the transmission timer
+      // Note - this can overflow after 70 min of arduino runtime - might need to fix later
+      startTransmissionTime = getSafeMicros();
 
 
-        endTransmissionTime = getSafeMicros();
+      if (scoreChar != nullptr) {
+        scoreChar->setValue(pointsString);
+        scoreChar->notify();
+      }
 
-        // Print to serial
-        Serial.print("Current Score: ");
-        Serial.println(pointsString);
+
+      endTransmissionTime = getSafeMicros();
+
+      // Print to serial
+      Serial.print("Current Score: ");
+      Serial.println(pointsString);
 
 
-        latency = endTransmissionTime - startTransmissionTime;
+      latency = endTransmissionTime - startTransmissionTime;
 
-        // Turn latency into a string and print to serial (no need to send it over)
-        snprintf(latencyString, sizeof(latencyString), "Latency: %lu microseconds", latency);
+      // Turn latency into a string and print to serial (no need to send it over)
+      snprintf(latencyString, sizeof(latencyString), "Latency: %lu microseconds", latency);
 
-        Serial.println(latencyString);
+      Serial.println(latencyString);
 
-        // Print an empty line to seperate data
-        Serial.println();
+      // Print an empty line to seperate data
+      Serial.println();
     }
   } else {
     // Reset connection tracking when disconnected
@@ -1060,3 +1063,4 @@ void loop() {
     sentInitialScore = false;
   }
 }
+
