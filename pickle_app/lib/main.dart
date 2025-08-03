@@ -308,7 +308,7 @@ class APIRequests {
     }
   }
 
-  Future<Map<String, dynamic>> registerStats(String un, int gameID, int swingCount, int swingHits, double swingMax) async{
+  Future<Map<String, dynamic>> registerStats(String un, int gameID, int swingCount, int swingHits, double swingMax, int q1, int q2, int q3, int q4) async{
     Map<String, dynamic> userId = await getUserID(un);
     final int userIdNum = userId[un];
 
@@ -319,10 +319,10 @@ class APIRequests {
       'swing_count': swingCount,
       'swing_hits': swingHits,
       'swing_max': swingMax,
-      'Q1_hits': 0,
-      'Q2_hits': 0,
-      'Q3_hits': 0,
-      'Q4_hits': 0
+      'Q1_hits': q1,
+      'Q2_hits': q2,
+      'Q3_hits': q3,
+      'Q4_hits': q4
     };
 
     print(params);
@@ -695,7 +695,7 @@ class BleFunctionality{
 
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
-      print("Received from BLE: $value");
+      //print("Received from BLE: $value");
       latestScoreData.value = value; //update latestData value
     }, onError: (error) {
       latestScoreData.value = null;
@@ -718,7 +718,7 @@ class BleFunctionality{
 
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
-      print("Received from BLE: $value");
+      // print("Received from BLE: $value");
       latestSwingData.value = value; //update latestData value
     }, onError: (error) {
       latestSwingData.value = null;
@@ -741,7 +741,7 @@ class BleFunctionality{
 
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
-      print("Received from BLE: $value");
+      // print("Received from BLE: $value");
       latestHitData.value = value; //update latestData value
     }, onError: (error) {
       latestHitData.value = null;
@@ -837,6 +837,11 @@ class Game {
       return true;
     }
     else if(opponentScore >= 11 && myScore <= opponentScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else if(opponentScore >= 15 || myScore >= 15){
       inProgress = false;
       isFinished = true;
       return true;
@@ -1172,7 +1177,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   ///save finished game data to Hive box
-  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints, String un, int swingCount, int swingHits, double swingMax) async {
+  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints, String un, int swingCount, int swingHits, double swingMax, int q1, int q2, int q3, int q4) async {
     Map<String, dynamic> gameToSave = {
       'timestamp': startTime,
       'game_type': gameTypeNum,
@@ -1184,7 +1189,11 @@ class _GamePageState extends State<GamePage> {
       //'game_id': gameId, will not be known on call
       'swing_count': swingCount,
       'swing_hits': swingHits,
-      'swing_max': swingMax
+      'swing_max': swingMax,
+      'Q1_hits': q1,
+      'Q2_hits': q2,
+      'Q3_hits': q3,
+      'Q4_hits': q4
     };
 
     final cacheBox = await Hive.openBox("gameQueue");
@@ -1196,14 +1205,17 @@ class _GamePageState extends State<GamePage> {
   void sendCachedGames() async {
     final cacheBox = await Hive.openBox("gameQueue");
     final cacheBoxKeys = cacheBox.keys.toList();
+    print("Game queue length: ${cacheBoxKeys.length}");
 
     for(final key in cacheBoxKeys){
       final gameData = cacheBox.get(key);
       print(gameData);
       Map<String, dynamic> gameIdMap = await api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
       int gameID = gameIdMap['game_id'];
-      api.registerStats(gameData['username'], gameID, gameData['swing_count'], gameData['swing_hits'], gameData['swing_max']);
+      api.registerStats(gameData['username'], gameID, gameData['swing_count'], gameData['swing_hits'], gameData['swing_max'], gameData['Q1_hits'], gameData['Q2_hits'], gameData['Q3_hits'], gameData['Q4_hits']);
     }
+
+    await cacheBox.clear();
   }
 
   ///format game info for saving, cache or register to database, reset game
@@ -1235,13 +1247,13 @@ class _GamePageState extends State<GamePage> {
       Map<String, dynamic> gameIdMap = await api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
       int gameID = gameIdMap['game_id'];
       String un = context.read<User>().username;
-      api.registerStats(un, gameID, game.swingCount, game.swingHits, game.swingMax);
+      api.registerStats(un, gameID, game.swingCount, game.swingHits, game.swingMax, game.q1Hits, game.q2Hits, game.q3Hits, game.q4Hits);
       myBLE.writeReset();
       print("Online. Sending game to database $un");
     }
     else{
       //try just turning off wifi instead of full airplane mode
-      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax);
+      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax, game.q1Hits, game.q2Hits, game.q3Hits, game.q4Hits);
       print("Offline. Caching game data");
     }
 
@@ -1476,19 +1488,23 @@ class _GamePageState extends State<GamePage> {
               ),
             ],
           ),
-          Text("Game type: ${game.gameType}"),
-          ElevatedButton(
-              onPressed: startStandardGame,
-              child: Text("Start Game")
-          ),
-          ElevatedButton(
-              onPressed: incMyScore,
-              child: Text("Inc my score")
-          ),
-          ElevatedButton(
-              onPressed: incOppScore,
-              child: Text("Inc opp score")
-          ),
+          SizedBox(height: 16),
+          Text("Swing Speed ${game.swingMax}"),
+          SizedBox(height: 16,),
+          Text("Hits - Q1: ${game.q1Hits} Q2: ${game.q2Hits} Q3: ${game.q3Hits} Q4: ${game.q4Hits}")
+          // Text("Game type: ${game.gameType}"),
+          // ElevatedButton(
+          //     onPressed: startStandardGame,
+          //     child: Text("Start Game")
+          // ),
+          // ElevatedButton(
+          //     onPressed: incMyScore,
+          //     child: Text("Inc my score")
+          // ),
+          // ElevatedButton(
+          //     onPressed: incOppScore,
+          //     child: Text("Inc opp score")
+          // ),
         ],
       ),
     );
@@ -1520,16 +1536,21 @@ class _SocialPageState extends State<SocialPage> {
 
   void friendCaching() async {
     final cacheBox = await Hive.openBox("friendQueue");
-    if(internetConnection.isOnline.value && cacheBox.isEmpty){
+    if(internetConnection.isOnline.value){
       final friendsToSave = context.read<User>().pals;
+      print("Pals type: ${context.read<User>().pals.runtimeType}");
+      print("friendsToSave type: ${friendsToSave.runtimeType}");
       await cacheBox.add(friendsToSave);
       print("connection, saving pals");
     }
-    else if(!internetConnection.isOnline.value && cacheBox.isNotEmpty){
+    else if(!internetConnection.isOnline.value){
+      print("no connection, getting cached friends");
       final cacheBoxKeys = cacheBox.keys.toList();
-      final key = cacheBoxKeys[0];
+      int length = cacheBoxKeys.length;
+      final key = cacheBoxKeys[length - 1];
 
       final friendData = cacheBox.get(key);
+      print("friend data $friendData");
       context.read<User>().setPals(friendData);
 
       print("no connection, displaying saved pals");
