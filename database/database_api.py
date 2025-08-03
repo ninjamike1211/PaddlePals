@@ -45,6 +45,7 @@ class restAPI:
         self._useAuth = useAuth
         self.__apiKeys = {}
         self.__renewalKeys = {}
+        self.__user_cache = set()
 
         # If the database is uninitialized, initialize it
         self._dbCursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
@@ -171,9 +172,20 @@ class restAPI:
 
     def _is_user_account_valid(self, user_id: int):
         # Checks if a user ID is associated with a valid user account (excludes deleted users, admin, unknown users)
+        # First check the user cache (if found, it's a recognized account)
+        if user_id in self.__user_cache:
+            return True
+        
+        # If not in the cache, check the database manually
         self._dbCursor.execute("SELECT valid FROM users WHERE user_id=?", (user_id,))
         valid = self._dbCursor.fetchone()
-        return valid and valid[0]
+
+        # If user found and valid, add it to the user cache and return status
+        if valid and valid[0]:
+            self.__user_cache.add(user_id)
+            return True
+        else:
+            return False
     
 
     def _is_user_id_valid(self, user_id: int):
@@ -465,6 +477,9 @@ class restAPI:
         # Add user to the database
         self._dbCursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 0, 0, 0.0)", (user_id, username, pass_hash, salt))
         self._database.commit()
+
+        # Add user to user cache (for faster response time)
+        self.__user_cache.add(user_id)
         return {'user_id':user_id}
     
 
@@ -498,6 +513,10 @@ class restAPI:
         self._dbCursor.execute("DELETE FROM friends WHERE userA=? OR userB=?", (user_id, user_id))
         self._dbCursor.execute("DELETE FROM user_game_stats WHERE user_id=?", (user_id,))
         self._database.commit()
+
+        # Remove user from user cache
+        if user_id in self.__user_cache:
+            self.__user_cache.remove(user_id)
         return {'success':True}
             
     
@@ -840,17 +859,11 @@ class restAPI:
         elif loser_points >= 11:
             raise self.APIError(f'Invalid game score, {winner_points} to {loser_points}', 400)
 
-
-        self._dbCursor.execute("SELECT game_id FROM games ORDER BY game_id DESC LIMIT 1")
-        game_id_raw = self._dbCursor.fetchone()
-
-        # If there are registered games, the next game is has the ID of the last one + 1
-        if game_id_raw:
-            game_id = game_id_raw[0] + 1
-        
-        # If there are no registered games, make the first ID 0
-        else:
-            game_id = 0
+        # Search for duplicate game in database
+        game_id = int(f'{winner_id}{loser_id}{timestamp}')
+        self._dbCursor.execute("SElECT COUNT(*) FROM games WHERE game_id=?", (game_id,))
+        if self._dbCursor.fetchone()[0]:
+            raise self.APIError(f'Duplicate game registered!', 403)
 
         self._dbCursor.execute(
             "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -880,9 +893,13 @@ class restAPI:
         if not self._is_user_account_valid(user_id):
             raise self.APIError(f'User ID {user_id} is not a valid user', 404)
         
-        self._dbCursor.execute("SELECT * FROM games WHERE game_id=?", (game_id,))
-        if not self._dbCursor.fetchone():
+        self._dbCursor.execute("SELECT COUNT(*) FROM games WHERE game_id=?", (game_id,))
+        if not self._dbCursor.fetchone()[0]:
             raise self.APIError(f'Game ID {game_id} not found in database', 404)
+        
+        self._dbCursor.execute("SELECT COUNT(*) FROM user_game_stats WHERE game_id=? AND user_id=?", (game_id, user_id))
+        if self._dbCursor.fetchone()[0]:
+            raise self.APIError(f'Not allowed to register multiple game stats with the same game ID ({game_id}) and user ID ({user_id})', 403)
 
         if Q1_hits + Q2_hits + Q3_hits + Q4_hits != swing_hits:
             raise self.APIError(f'Individual quadrent hits ({Q1_hits},{Q2_hits},{Q3_hits},{Q4_hits}) don\'t add to the total hits ({swing_hits})', 400)

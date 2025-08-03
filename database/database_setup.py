@@ -27,7 +27,7 @@ def setup_db(dbPath:str, users:dict = None, gen_games:int = 0):
             else:
                 points_lose = points_win - 2
 
-            api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':user_win, 'loser_id':user_lose, 'winner_points':points_win, 'loser_points':points_lose})
+            api._api_game_register({'timestamp':i, 'game_type':0, 'winner_id':user_win, 'loser_id':user_lose, 'winner_points':points_win, 'loser_points':points_lose})
     
     api.close()
 
@@ -43,4 +43,4 @@ if __name__ == '__main__':
     }
     gen_games = 200
 
-    setup_db('pickle.db', users, gen_games)
+    setup_db('database/pickle.db', users, gen_games)

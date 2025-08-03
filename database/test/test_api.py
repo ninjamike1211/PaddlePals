@@ -49,7 +49,7 @@ def test_init(tmp_path):
     api._api_user_create({'username':'testUserA', 'password':'t3stP@ssw0rd!'})
     api._api_user_create({'username':'testUserB', 'password':'t3stP@ssw0rd!'})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':5})
-    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':25, 'Q2_hits':25, 'Q3_hits':27, 'Q4_hits':24})
+    api._api_game_registerStats({'user_id':1, 'game_id':120, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':25, 'Q2_hits':25, 'Q3_hits':27, 'Q4_hits':24})
     api._api_user_addFriend({'user_id':1, 'friend_id':2})
     api.close()
 
@@ -310,7 +310,7 @@ def test_gen_ApiKey_collisions(tmp_path):
 def test_checkApiKey(tmp_path):
     api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
 
-    # Set api key timeout to 10 seconds
+    # Set api key timeout to 5 seconds
     api.API_KEY_TIMEOUT = 5
 
     # Check there are no api keys before authentication
@@ -340,6 +340,13 @@ def test_checkApiKey(tmp_path):
     with pytest.raises(restAPI.APIError) as apiError:
         api._checkApiKey(keyB)
     assert apiError.value.code == 498
+
+    # Check random invalid API keys don't work
+    assert api._checkApiKey(None) == None
+    assert api._checkApiKey("") == None
+    assert api._checkApiKey("0") == None
+    assert api._checkApiKey("0000000000000000") == None # In the incredibly rare chance of a collision, just run it again
+    assert api._checkApiKey("0123456789abcdefghijklmnopqrstuvwxyz") == None
 
 def test_user_get_admin(tmp_path):
     api = setup_api(tmp_path)
@@ -407,8 +414,8 @@ def test_api_user_getUsername(tmp_path):
 def test_api_user_getStats(tmp_path):
     api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
+    api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
+    api._api_game_register({'timestamp':2, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':13, 'loser_points':11})
 
     # get all user info
     userA = api._api_user_getStats({'user_id':1, 'sender_id':0})
@@ -608,8 +615,8 @@ def test_api_user_delete(tmp_path):
     api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
     api._api_user_addFriend({'user_id':1, 'friend_id':2, 'sender_id':0})
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':150, 'swing_hits':90, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22})
-    api._api_game_registerStats({'user_id':2, 'game_id':0, 'swing_count':139, 'swing_hits':83, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19})
+    api._api_game_registerStats({'user_id':1, 'game_id':120, 'swing_count':150, 'swing_hits':90, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22})
+    api._api_game_registerStats({'user_id':2, 'game_id':120, 'swing_count':139, 'swing_hits':83, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19})
 
     # Test invalid params
     with pytest.raises(restAPI.APIError) as apiError:
@@ -724,11 +731,11 @@ def test_api_user_friends(tmp_path):
 
     # Register games (for friend stats)
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':3, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':3, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':3, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
-    api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':3, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
+    api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3, 'sender_id':0})
+    api._api_game_register({'timestamp':2, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
+    api._api_game_register({'timestamp':3, 'game_type':0, 'winner_id':1, 'loser_id':3, 'winner_points':11, 'loser_points':3, 'sender_id':0})
+    api._api_game_register({'timestamp':4, 'game_type':0, 'winner_id':3, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
+    api._api_game_register({'timestamp':5, 'game_type':0, 'winner_id':3, 'loser_id':1, 'winner_points':11, 'loser_points':3, 'sender_id':0})
 
     # Pull friend data from each user
     friendsA = api._api_user_friends({'user_id':1})
@@ -745,22 +752,22 @@ def test_post_game(tmp_path):
     api = setup_api(tmp_path, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
 
     game_id = api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7})
-    assert game_id == {'game_id':0}
+    assert game_id == {'game_id':120}
 
-    game = api._api_game_get({'game_id':0})
-    assert game == {0: {'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7}}
+    game = api._api_game_get({'game_id':120})
+    assert game == {120: {'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':7}}
 
-    game_id = api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10})
-    assert game_id == {'game_id':1}
+    game_id = api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10})
+    assert game_id == {'game_id':211}
 
-    game = api._api_game_get({'game_id':1})
-    assert game == {1: {'timestamp':0, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10}}
+    game = api._api_game_get({'game_id':211})
+    assert game == {211: {'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':12, 'loser_points':10}}
 
     gamesA = api._api_user_games({'user_id':1})
-    assert gamesA == {'game_ids':[0,1]}
+    assert gamesA == {'game_ids':[120,211]}
 
     gamesB = api._api_user_games({'user_id':2})
-    assert gamesB == {'game_ids':[0,1]}
+    assert gamesB == {'game_ids':[120,211]}
 
     userA_data = api._api_user_getStats({'user_id':[1,2], 'objects':['gamesPlayed', 'gamesWon', 'averageScore']})
     assert userA_data == {1: {'gamesPlayed':2, 'gamesWon':1, 'averageScore':10.5},
@@ -810,23 +817,23 @@ def test_game_stats(tmp_path):
     api._api_game_register({'timestamp':0, 'game_type':0, 'winner_id':1, 'loser_id':2, 'winner_points':11, 'loser_points':3})
     api._api_game_register({'timestamp':1, 'game_type':0, 'winner_id':2, 'loser_id':1, 'winner_points':11, 'loser_points':8})
 
-    result = api._api_game_registerStats({'user_id':1, 'game_id':0, 'swing_count':150, 'swing_hits':90, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22})
+    result = api._api_game_registerStats({'user_id':1, 'game_id':120, 'swing_count':150, 'swing_hits':90, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22})
     assert result == {'success':True}
 
-    result = api._api_game_registerStats({'user_id':2, 'game_id':0, 'swing_count':139, 'swing_hits':83, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19})
+    result = api._api_game_registerStats({'user_id':2, 'game_id':120, 'swing_count':139, 'swing_hits':83, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19})
     assert result == {'success':True}
 
-    result = api._api_game_registerStats({'user_id':1, 'game_id':1, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26})
+    result = api._api_game_registerStats({'user_id':1, 'game_id':211, 'swing_count':161, 'swing_hits':101, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26})
     assert result == {'success':True}
 
     result = api._api_game_stats({'user_id':1})
-    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
-                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26}}
+    assert result == {120:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
+                      211:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26}}
     
-    result = api._api_game_stats({'user_id':1, 'game_id':[0,1,2]})
-    assert result == {0:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
-                      1:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26},
+    result = api._api_game_stats({'user_id':1, 'game_id':[120,211,2]})
+    assert result == {120:{'timestamp':0, 'swing_count':150, 'swing_hits':90, 'hit_percentage':0.6, 'swing_max':20, 'Q1_hits':23, 'Q2_hits':24, 'Q3_hits':21, 'Q4_hits':22},
+                      211:{'timestamp':1, 'swing_count':161, 'swing_hits':101, 'hit_percentage':0.6273291925465838, 'swing_max':19, 'Q1_hits':26, 'Q2_hits':24, 'Q3_hits':25, 'Q4_hits':26},
                       2:None}
 
-    result = api._api_game_stats({'game_id':0, 'user_id':2})
-    assert result == {0:{'timestamp':0, 'swing_count':139, 'swing_hits':83, 'hit_percentage':0.5971223021582733, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19}}
+    result = api._api_game_stats({'game_id':120, 'user_id':2})
+    assert result == {120:{'timestamp':0, 'swing_count':139, 'swing_hits':83, 'hit_percentage':0.5971223021582733, 'swing_max':23, 'Q1_hits':21, 'Q2_hits':22, 'Q3_hits':21, 'Q4_hits':19}}
