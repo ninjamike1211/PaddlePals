@@ -425,37 +425,60 @@ class APIRequests {
   Future<Map<String, dynamic>> getGameStats(int gameID, String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
+    if(gameID >= 231754234702){
+      Map<String, dynamic> params = {
+        'user_id' : user_id_num,
+        'game_id': gameID
+      };
 
-    Map<String, dynamic> params = {
-      'game_id': gameID,
-      'user_id' : user_id_num
-    };
-
-    print(params);
-    String endpoint = "/pickle/game/stats";
-    print("$endpoint");
+      print(params);
+      String endpoint = "/pickle/game/stats";
+      print("$endpoint");
 
 
-    final response = await http.post(
-      Uri.parse('$url$endpoint'),
-      headers: {
-        'Content-Type': 'application/json',
-        "Authorization": "Bearer $apiToken",
-      },
-      body: json.encode(params),
-    );
+      final response = await http.post(
+        Uri.parse('$url$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          "Authorization": "Bearer $apiToken",
+        },
+        body: json.encode(params),
+      );
 
-    print("Sent JSON: ${jsonEncode(params)}");
-    print("Status: ${response.statusCode}");
-    print("Body: ${response.body}");
+      print("Sent JSON: ${jsonEncode(params)}");
+      print("Status: ${response.statusCode}");
+      print("Body: ${response.body}");
 
-    if (response.statusCode == 200 || response.statusCode == 201){
-      // print(json.decode(response.body));
-      return json.decode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201){
+        // print(json.decode(response.body));
+        return json.decode(response.body);
+      }
+      else{
+        throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+      }
     }
     else{
-      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+      print("game not in range to get stats, returning default");
+      String gameIdString = gameID.toString();
+      Map<String, dynamic> defaultGameStats = {
+        gameIdString : {
+          "timestamp": 0,
+          "swing_count": 0,
+          "swing_hits": 0,
+          "hit_percentage": 0.0,
+          "swing_min": 0.0,
+          "swing_max": 0.0,
+          "swing_avg": 0.0,
+          "hit_modeX": 0.0,
+          "hit_modeY": 0.0,
+          "hit_avgX": 0.0,
+          "hit_avgY": 0.0,
+        }
+      };
+      defaultGameStats['date_time'] = DateTime.fromMillisecondsSinceEpoch(defaultGameStats[gameIdString]['timestamp'] * 1000);
+      return defaultGameStats;
     }
+
   }
 
   ///get the username from a user's id number
@@ -774,6 +797,11 @@ class BleFunctionality{
   void stopScan() {
     scanSubscription.cancel();
     print("Scan stopped");
+  }
+
+  void disconnect(){
+    connection.cancel();
+    connectedDevice = null;
   }
 }
 
@@ -1562,7 +1590,7 @@ class _GamePageState extends State<GamePage> {
           Text("Hits - Q1: ${game.q1Hits} Q2: ${game.q2Hits} Q3: ${game.q3Hits} Q4: ${game.q4Hits}"),
           SizedBox(height: 16,),
           ElevatedButton(
-              onPressed: () => _reset,
+              onPressed: _reset,
               child: Text("Reset Game"))
           // Text("Game type: ${game.gameType}"),
           // ElevatedButton(
@@ -1803,7 +1831,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
     //save the game ids as a list of ints
     List<dynamic> gameIdDynamic = data['game_ids'] ?? [];
-    List<int> gameIdNums = gameIdDynamic.cast<int>();
+    List<int> gameIdNums = gameIdDynamic.cast<int>().reversed.toList();
 
     //check the widget is mounted before saving state
     if (mounted) {
@@ -2428,19 +2456,31 @@ class _ProfilePageState extends State<ProfilePage> {
                 "Hello, ${user.username}"
             ),
             SizedBox(height: 16,),
-            ElevatedButton( //reset user and return to login page on logout
-                onPressed: () {
-                  logout();
-                  Navigator.pushReplacementNamed(context, '/');
-                },
-                child: Text("Logout")
+            Row(
+              children: [
+                ElevatedButton( //reset user and return to login page on logout
+                    onPressed: () {
+                      logout();
+                      Navigator.pushReplacementNamed(context, '/');
+                    },
+                    child: Text("Logout")
+                ),
+                SizedBox(width: 16,),
+                // ElevatedButton(
+                //     onPressed: myBLE.disconnect,
+                //     child: Text("Disconnect device")
+                // )
+              ],
             ),
             Expanded(
-              child: ListView.builder( //TODO add connect ui, disconnect
+              child: ListView.builder(
                   itemCount: devices.length,
                   itemBuilder: (context, index) {
                     final device = devices[index];
                     return ListTile(
+                      tileColor: device.id == myBLE.connectedDevice?.id
+                          ? Colors.green[100] // Connected device highlight color
+                          : null,
                       title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
                       subtitle: Text(device.id),
                       onTap: () => connect(device),
