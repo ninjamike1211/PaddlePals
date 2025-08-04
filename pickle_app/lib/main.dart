@@ -27,7 +27,7 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.6.23.8:80";
+  final String url = "http://10.0.0.188:80";
   String apiToken = "";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
@@ -539,6 +539,7 @@ class User extends ChangeNotifier {
     newUserName = newUserName.trim();
     print("in updateUserfromDatabase");
     Map<String, dynamic> user_id = await api.getUserID(newUserName);
+    print("User id map: $user_id");
 
     final int id_num = user_id[newUserName];
     final String id_string = id_num.toString();
@@ -907,57 +908,74 @@ class Game {
 
 ///class to check for network connection
 class ConnectivityCheck {
-  //only allow for one instance
+  // Singleton pattern
   static final ConnectivityCheck _instance = ConnectivityCheck._internal();
   factory ConnectivityCheck() => _instance;
-  ConnectivityCheck._internal(){
+  ConnectivityCheck._internal() {
     _init();
   }
 
-  //init library
-  final _connectivity = Connectivity();
+  final Connectivity _connectivity = Connectivity();
   final ValueNotifier<bool> isOnline = ValueNotifier(true);
 
-  ///get initial connection and double check
-  void _init() async{
+  // Keep track of previous state
+  bool _wasOffline = false;
+
+  // Debounce timer to prevent flooding
+  Timer? _debounceTimer;
+
+  // Callback to call on reconnect
+  VoidCallback? _onReconnectCallback;
+
+  void _init() async {
     await _checkInitStatus();
 
-    _connectivity.onConnectivityChanged.listen((result){
+    // Listen for connection changes
+    _connectivity.onConnectivityChanged.listen((result) {
       final online = !result.contains(ConnectivityResult.none);
       isOnline.value = online;
-    });
 
+      // If connection is restored and we were offline
+      if (online && _wasOffline) {
+        _triggerOnReconnect();
+      }
+
+      // Update state
+      _wasOffline = !online;
+    });
   }
 
-  ///get initial connection status
   Future<void> _checkInitStatus() async {
     final result = await _connectivity.checkConnectivity();
     final online = !result.contains(ConnectivityResult.none);
     isOnline.value = online;
-    print('Initial connectivity: $result');
+    _wasOffline = !online;
 
-    // Delay the print to ensure ValueNotifier has processed the change
+    print('Initial connectivity: $result');
     Future.microtask(() {
       print('isOnline after update: ${isOnline.value}');
     });
   }
 
-  ///listen for a restored connection, then send previously cached data to database
-  void connectionRestoreListener(VoidCallback sendCachedData){
-    //check previous connection state
-    bool wasOffline = !isOnline.value;
+  void _triggerOnReconnect() {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer?.cancel();
 
-    isOnline.addListener(() {
-      //connection was restored
-      if (isOnline.value && wasOffline){
-        sendCachedData();
+    // Debounce rapid triggers (e.g., flapping Wi-Fi)
+    _debounceTimer = Timer(const Duration(seconds: 2), () {
+      if (_onReconnectCallback != null) {
+        print("Internet connection restored. Sending cached games");
+        _onReconnectCallback!();
       }
-      //reset value
-      wasOffline = !isOnline.value;
     });
+  }
 
+  /// Call this ONCE from one place in your app (e.g., main/home page)
+  /// Do NOT call it multiple times or from multiple widgets
+  void connectionRestoreListener(VoidCallback sendCachedData) {
+    _onReconnectCallback = sendCachedData;
   }
 }
+
 
 ///Top level widget
 class MyApp extends StatefulWidget {
@@ -1082,6 +1100,8 @@ class _GamePageState extends State<GamePage> {
   late VoidCallback _bleDataListener; //function for receiving score data from ble
   late VoidCallback _bleSwingSpeedListener; //receive swing speed data from ble
   late VoidCallback _bleHitListener;
+  bool isSendingGames = false;
+  static bool _connectionListenerAdded = false;
 
   ///check if the user has inputted an opponent and update game
   void loadOpponent(){
@@ -1178,6 +1198,7 @@ class _GamePageState extends State<GamePage> {
 
   ///save finished game data to Hive box
   Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints, String un, int swingCount, int swingHits, double swingMax, int q1, int q2, int q3, int q4) async {
+
     Map<String, dynamic> gameToSave = {
       'timestamp': startTime,
       'game_type': gameTypeNum,
@@ -1186,7 +1207,6 @@ class _GamePageState extends State<GamePage> {
       'winner_points': winnerPoints,
       'loser_points': loserPoints,
       'username': un,
-      //'game_id': gameId, will not be known on call
       'swing_count': swingCount,
       'swing_hits': swingHits,
       'swing_max': swingMax,
@@ -1202,21 +1222,58 @@ class _GamePageState extends State<GamePage> {
   }
 
   ///open the Hive box and register each game in the queue to the database
-  void sendCachedGames() async {
+  Future<void> sendCachedGames() async {
+    if (isSendingGames) {
+      print("Already sending cached games. Skipping duplicate call.");
+      return;
+    }
+
+    isSendingGames = true;
+
     final cacheBox = await Hive.openBox("gameQueue");
     final cacheBoxKeys = cacheBox.keys.toList();
     print("Game queue length: ${cacheBoxKeys.length}");
 
-    for(final key in cacheBoxKeys){
-      final gameData = cacheBox.get(key);
-      print(gameData);
-      Map<String, dynamic> gameIdMap = await api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
-      int gameID = gameIdMap['game_id'];
-      api.registerStats(gameData['username'], gameID, gameData['swing_count'], gameData['swing_hits'], gameData['swing_max'], gameData['Q1_hits'], gameData['Q2_hits'], gameData['Q3_hits'], gameData['Q4_hits']);
+    for (final key in cacheBoxKeys) {
+      try {
+        final gameData = await cacheBox.get(key);
+        print("Game data at key $key: $gameData");
+        if (gameData == null) continue;
+
+        final gameIdMap = await api.registerGame(
+          gameData['timestamp'],
+          gameData['game_type'],
+          gameData['winner_name'],
+          gameData['loser_name'],
+          gameData['winner_points'],
+          gameData['loser_points'],
+        );
+
+        final gameID = gameIdMap['game_id'];
+        await Future.delayed(Duration(milliseconds: 500));
+        await api.registerStats(
+          gameData['username'],
+          gameID,
+          gameData['swing_count'],
+          gameData['swing_hits'],
+          gameData['swing_max'],
+          gameData['Q1_hits'],
+          gameData['Q2_hits'],
+          gameData['Q3_hits'],
+          gameData['Q4_hits'],
+        );
+
+        await cacheBox.delete(key); // delete successfully sent game
+      } catch (e) {
+        print("Error sending cached game at key $key: $e");
+      }
+      await Future.delayed(Duration(milliseconds: 500));
     }
 
+    isSendingGames = false;
     await cacheBox.clear();
   }
+
 
   ///format game info for saving, cache or register to database, reset game
   void saveAndRestartGame() async{
@@ -1253,6 +1310,7 @@ class _GamePageState extends State<GamePage> {
     }
     else{
       //try just turning off wifi instead of full airplane mode
+      myBLE.writeReset();
       cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax, game.q1Hits, game.q2Hits, game.q3Hits, game.q4Hits);
       print("Offline. Caching game data");
     }
@@ -1265,6 +1323,13 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
+  void _reset(){
+    context.read<User>().setOpponent("");
+    myBLE.writeReset();
+    setState(() {
+      game.resetGame();
+    });
+  }
 
   ///handle exiting page
   @override
@@ -1400,10 +1465,13 @@ class _GamePageState extends State<GamePage> {
 
     myBLE.latestHitData.addListener(_bleHitListener);
     //when internet connection is restored, immediately send cached games to database
-    internetConnection.connectionRestoreListener((){
-      print("Internet connection restored. Sending cached games");
-      sendCachedGames();
-    });
+    if (!_connectionListenerAdded) {
+      internetConnection.connectionRestoreListener(() {
+        print("Internet connection restored. Sending cached games");
+        sendCachedGames();
+      });
+      _connectionListenerAdded = true;
+    }
 
   }
 
@@ -1491,7 +1559,11 @@ class _GamePageState extends State<GamePage> {
           SizedBox(height: 16),
           Text("Swing Speed ${game.swingMax}"),
           SizedBox(height: 16,),
-          Text("Hits - Q1: ${game.q1Hits} Q2: ${game.q2Hits} Q3: ${game.q3Hits} Q4: ${game.q4Hits}")
+          Text("Hits - Q1: ${game.q1Hits} Q2: ${game.q2Hits} Q3: ${game.q3Hits} Q4: ${game.q4Hits}"),
+          SizedBox(height: 16,),
+          ElevatedButton(
+              onPressed: () => _reset,
+              child: Text("Reset Game"))
           // Text("Game type: ${game.gameType}"),
           // ElevatedButton(
           //     onPressed: startStandardGame,
@@ -1531,29 +1603,27 @@ class _SocialPageState extends State<SocialPage> {
   void initState() {
     super.initState();
     //refresh user info
-    loadUser();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadUser();
+    });
   }
 
-  void friendCaching() async {
+  Future<void> friendCaching() async {
     final cacheBox = await Hive.openBox("friendQueue");
-    if(internetConnection.isOnline.value){
+    if (internetConnection.isOnline.value) {
       final friendsToSave = context.read<User>().pals;
-      print("Pals type: ${context.read<User>().pals.runtimeType}");
-      print("friendsToSave type: ${friendsToSave.runtimeType}");
-      await cacheBox.add(friendsToSave);
-      print("connection, saving pals");
-    }
-    else if(!internetConnection.isOnline.value){
-      print("no connection, getting cached friends");
-      final cacheBoxKeys = cacheBox.keys.toList();
-      int length = cacheBoxKeys.length;
-      final key = cacheBoxKeys[length - 1];
-
-      final friendData = cacheBox.get(key);
-      print("friend data $friendData");
-      context.read<User>().setPals(friendData);
-
-      print("no connection, displaying saved pals");
+      print("Saving friends of type: ${friendsToSave.runtimeType}");
+      await cacheBox.put("latestFriends", friendsToSave);
+      print("Online: saved pals");
+    } else {
+      print("Offline: attempting to load cached friends");
+      if (cacheBox.containsKey("latestFriends")) {
+        final friendData = cacheBox.get("latestFriends");
+        print("Loaded cached friends: $friendData");
+        context.read<User>().setPals(friendData);
+      } else {
+        print("No cached friend data available");
+      }
     }
   }
 
@@ -1563,7 +1633,7 @@ class _SocialPageState extends State<SocialPage> {
     if(internetConnection.isOnline.value){
       await context.read<User>().updateUserfromDatabase(username);
     }
-    friendCaching();
+    await friendCaching();
     setState(() {
       isLoading = false;
     });
@@ -2116,33 +2186,34 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _controller1 = TextEditingController();
   final TextEditingController _controller2 = TextEditingController();
 
-  void cacheUser(String un, String pw) async{
-    Map<String, dynamic> userToSave = {
+  Future<void> cacheUser(String un, String pw) async {
+    final userToSave = {
       'username': un.trim(),
       'password': pw.trim(),
-      // 'friends_list': context.read<User>().pals
     };
 
-    // print("friends list ${userToSave['friends_list']}");
-
     final cacheBox = await Hive.openBox("userQueue");
-    await cacheBox.add(userToSave);
+    await cacheBox.put('cachedUser', userToSave); // use fixed key
 
-    print("user cached");
+    print("User cached");
   }
 
-  void getCachedUser(String enteredUn, String enteredPw) async {
+  Future<void> getCachedUser(String enteredUn, String enteredPw) async {
     final cacheBox = await Hive.openBox("userQueue");
-    final cacheBoxKeys = cacheBox.keys.toList();
-    final key = cacheBoxKeys[0];
 
-    final userData = cacheBox.get(key);
+    final userData = cacheBox.get('cachedUser');
 
-    if(enteredUn == userData['username'].trim() && enteredPw == userData['password'].trim()){
+    if (userData != null &&
+        enteredUn.trim() == userData['username'].trim() &&
+        enteredPw.trim() == userData['password'].trim()) {
+      print("Offline login approved");
       context.read<User>().setCacheUser(userData['username']);
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      print("Offline login failed");
     }
-
   }
+
 
   ///create new user and log them in
   _createNewUser(String userName, String password) {
@@ -2167,8 +2238,9 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
     else{
+      print("LOGIN UN: $userName");
       getCachedUser(userName.trim(), password.trim());
-      Navigator.pushReplacementNamed(context, '/home');
+
     }
 
   }
