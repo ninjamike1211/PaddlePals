@@ -506,7 +506,7 @@ def test_api_user_getStats(tmp_path):
         api._api_user_getStats({'user_id':2, 'sender_id':0})
     assert apiError.value.code == 404
 
-def test_api_user_set(tmp_path):
+def test_api_user_setUsername(tmp_path):
     api = setup_api(tmp_path, useAuth=True, users={'userA':'test_pass101A', 'userB':'test_pass101B'})
 
     # Test for no user_id

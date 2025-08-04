@@ -57,7 +57,7 @@ def test_auth(tmp_path):
         assert 'Authentication required, please obtain an API key through pickle/user/auth' in response.text
 
         # Set api token timeout for later testing
-        server.api.API_KEY_TIMEOUT = 1 * 60
+        server.api.API_KEY_TIMEOUT = 1 * 10
 
         # Get api tokens for all users
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'admin', 'password':'root'})

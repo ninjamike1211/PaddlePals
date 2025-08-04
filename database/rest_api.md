@@ -39,7 +39,7 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     }
     ```
 
-- `pickle/user/set`
+- `pickle/user/setUsername`
     ---
     Used to modify user data, such as username. For each value to modify, include a parameter of that value's name and its new value.
 
