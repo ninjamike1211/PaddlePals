@@ -27,7 +27,8 @@ void main() async{
 ///generally only do communication, no data manipulation
 class APIRequests {
   //current laptop IP address, change manually
-  final String url = "http://10.0.0.188:80";
+  final String url = "http://10.6.31.66:80";
+  String apiToken = "";
 
   ///get username, gamesPlayed, gamesWon, and averageScore from user id num
   Future<Map<String, dynamic>> getUserRequest(int id_num) async {
@@ -40,17 +41,18 @@ class APIRequests {
 
     print(u_id);
     //the endpoint for the api to call in rest_api.md
-    String endpoint = "/pickle/user/get";
+    String endpoint = "/pickle/user/getStats";
     print("$endpoint");
     //NOTE Authorization header for authorization api (look up standard authorization header, Bearer)
 
     //create the response using http.post
     final response = await http.post(
-      Uri.parse('$url$endpoint'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: json.encode(u_id)).timeout(const Duration(seconds:10));
+        Uri.parse('$url$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          "Authorization": "Bearer $apiToken",
+        },
+        body: json.encode(u_id)).timeout(const Duration(seconds:10));
 
     print('Status ${response.statusCode}');
 
@@ -87,6 +89,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(newUser),
     );
@@ -118,6 +121,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(userToSearch),
     );
@@ -158,6 +162,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -199,6 +204,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -230,14 +236,12 @@ class APIRequests {
     String endpoint = "/pickle/user/auth";
     print("Endpoint: $endpoint");
 
-    final bodyBytes = utf8.encode(json.encode(params));
     final response = await http.post(
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': bodyBytes.length.toString(),
       },
-      body: bodyBytes,
+      body: json.encode(params),
     );
 
     print("Status: ${response.statusCode}");
@@ -254,11 +258,17 @@ class APIRequests {
 
   ///save a completed game to the database
   Future<Map<String, dynamic>> registerGame(int timestamp, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async{
-    Map<String, dynamic> winner_id = await getUserID(winnerName);
-    final int winner_id_num = winner_id[winnerName];
+    int winner_id_num = -1;
+    int loser_id_num = -1;
 
-    Map<String, dynamic> loser_id = await getUserID(loserName);
-    final int loser_id_num = loser_id[loserName];
+    if(winnerName != "Opponent"){
+      Map<String, dynamic> winner_id = await getUserID(winnerName);
+      winner_id_num = winner_id[winnerName];
+    }
+    if(loserName != "Opponent"){
+      Map<String, dynamic> loser_id = await getUserID(loserName);
+      loser_id_num = loser_id[loserName];
+    }
 
     Map<String, dynamic> params = {
       'timestamp': timestamp,
@@ -278,6 +288,52 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
+      },
+      body: json.encode(params),
+    );
+
+    print("Sent JSON: ${jsonEncode(params)}");
+    print("Status: ${response.statusCode}");
+    print("Body: ${response.body}");
+
+    if (response.statusCode == 200 || response.statusCode == 201){
+      // print(json.decode(response.body));
+      return json.decode(response.body);
+    }
+    else{
+      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  ///save stats from a completed game to the database
+  Future<Map<String, dynamic>> registerStats(String un, int gameID, int swingCount, int swingHits, double swingMax, int q1, int q2, int q3, int q4) async{
+    Map<String, dynamic> userId = await getUserID(un);
+    final int userIdNum = userId[un];
+
+
+    Map<String, dynamic> params = {
+      'user_id': userIdNum,
+      'game_id': gameID,
+      'swing_count': swingCount,
+      'swing_hits': swingHits,
+      'swing_max': swingMax,
+      'Q1_hits': q1,
+      'Q2_hits': q2,
+      'Q3_hits': q3,
+      'Q4_hits': q4
+    };
+
+    print(params);
+    String endpoint = "/pickle/game/registerStats";
+    print("$endpoint");
+
+
+    final response = await http.post(
+      Uri.parse('$url$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -296,7 +352,6 @@ class APIRequests {
   }
 
   ///get a list of game id numbers the given user has participated in
-  //TODO add sorting options (should just need add parameter, adjust params accordingly)
   Future<Map<String, dynamic>> getUsersGames(String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
@@ -314,6 +369,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -346,6 +402,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -363,40 +420,68 @@ class APIRequests {
     }
   }
 
-  ///get a variety of swing and git information for a user from a specified game
+  ///get a variety of swing and hit information for a user from a specified game
   Future<Map<String, dynamic>> getGameStats(int gameID, String un) async {
     Map<String, dynamic> user_id = await getUserID(un);
     final int user_id_num = user_id[un];
+    //games generated from database_setup.py may not have generated simulated stats
+    //check for gameID of a game generated by app usage, not setup
+    if(gameID >= 231754234702){
+      //send as usual
+      Map<String, dynamic> params = {
+        'user_id' : user_id_num,
+        'game_id': gameID
+      };
 
-    Map<String, dynamic> params = {
-      'game_id': gameID,
-      'user_id' : user_id_num
-    };
-
-    print(params);
-    String endpoint = "/pickle/game/stats";
-    print("$endpoint");
+      print(params);
+      String endpoint = "/pickle/game/stats";
+      print("$endpoint");
 
 
-    final response = await http.post(
-      Uri.parse('$url$endpoint'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: json.encode(params),
-    );
+      final response = await http.post(
+        Uri.parse('$url$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          "Authorization": "Bearer $apiToken",
+        },
+        body: json.encode(params),
+      );
 
-    print("Sent JSON: ${jsonEncode(params)}");
-    print("Status: ${response.statusCode}");
-    print("Body: ${response.body}");
+      print("Sent JSON: ${jsonEncode(params)}");
+      print("Status: ${response.statusCode}");
+      print("Body: ${response.body}");
 
-    if (response.statusCode == 200 || response.statusCode == 201){
-      // print(json.decode(response.body));
-      return json.decode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201){
+        // print(json.decode(response.body));
+        return json.decode(response.body);
+      }
+      else{
+        throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+      }
     }
     else{
-      throw Exception('POST request failed: ${response.statusCode}, body: ${response.body}');
+      //the game was generated by setup, create default stats to show with the game
+      print("game not in range to get stats, returning default");
+      String gameIdString = gameID.toString();
+      Map<String, dynamic> defaultGameStats = {
+        gameIdString : {
+          "timestamp": 0,
+          "swing_count": 0,
+          "swing_hits": 0,
+          "hit_percentage": 0.0,
+          "swing_min": 0.0,
+          "swing_max": 0.0,
+          "swing_avg": 0.0,
+          "hit_modeX": 0.0,
+          "hit_modeY": 0.0,
+          "hit_avgX": 0.0,
+          "hit_avgY": 0.0,
+        }
+      };
+      defaultGameStats['date_time'] = DateTime.fromMillisecondsSinceEpoch(defaultGameStats[gameIdString]['timestamp'] * 1000);
+      return defaultGameStats;
     }
+
   }
 
   ///get the username from a user's id number
@@ -404,11 +489,10 @@ class APIRequests {
 
     Map<String, dynamic> params = {
       'user_id': userId,
-      'values' : 'username'
     };
 
     print(params);
-    String endpoint = "/pickle/user/get";
+    String endpoint = "/pickle/user/getUsername";
     print("$endpoint");
 
 
@@ -416,6 +500,7 @@ class APIRequests {
       Uri.parse('$url$endpoint'),
       headers: {
         'Content-Type': 'application/json',
+        "Authorization": "Bearer $apiToken",
       },
       body: json.encode(params),
     );
@@ -425,7 +510,6 @@ class APIRequests {
     print("Body: ${response.body}");
 
     if (response.statusCode == 200 || response.statusCode == 201){
-      // print(json.decode(response.body));
       return json.decode(response.body);
     }
     else{
@@ -480,12 +564,16 @@ class User extends ChangeNotifier {
     newUserName = newUserName.trim();
     print("in updateUserfromDatabase");
     Map<String, dynamic> user_id = await api.getUserID(newUserName);
+    print("User id map: $user_id");
 
     final int id_num = user_id[newUserName];
     final String id_string = id_num.toString();
 
     Map<String, dynamic> newUserMap = await api.getUserRequest(id_num);
     Map<String, dynamic> userMap = newUserMap[id_string];
+
+    Map<String,dynamic> usernameMap = await api.getUsername(id_num);
+    print("USERNAME MAP: $usernameMap");
 
     Map<String, dynamic> friendMap = await api.getFriends(newUserName);
 
@@ -495,18 +583,29 @@ class User extends ChangeNotifier {
       friendList.add(data);
     });
 
-    username = userMap['username'];
+    username = usernameMap[id_string];
     gamesPlayed = userMap['gamesPlayed'];
     gamesWon = userMap['gamesWon'];
     avgScore = userMap['averageScore'];
     pals = friendList;
 
-    notifyListeners();
+    notifyListeners();//update all widgets using user info
   }
 
   void setOpponent(String opponentName){
     opponent = opponentName;
     notifyListeners();
+  }
+
+  void setPals(List<Map<String,dynamic>> newPalsList){
+    pals = newPalsList;
+    notifyListeners();
+  }
+
+  ///offline mode, reset the user and set username
+  void setCacheUser(String un){
+    resetUser();
+    username = un;
   }
 
   ///reset the global user to "blank" values
@@ -525,14 +624,16 @@ class BleFunctionality{
 
   final FlutterReactiveBle flutterReactiveBle = FlutterReactiveBle(); //instantiate flutter ble class
   final List<DiscoveredDevice> devices = []; //devices found in scan
-  late StreamSubscription<DiscoveredDevice> scanSubscription;
+  late StreamSubscription<DiscoveredDevice> scanSubscription; //scanning
   late StreamSubscription<ConnectionStateUpdate> connection; //the established ble connection
   DiscoveredDevice? connectedDevice; //device that was connected to
 
-  //notify the game page when new data is received
-  final ValueNotifier<String?> latestData = ValueNotifier(null);
+  //notify the game page when new data is received from paddle
+  final ValueNotifier<String?> latestScoreData = ValueNotifier(null);
+  final ValueNotifier<String?> latestSwingData = ValueNotifier(null);
+  final ValueNotifier<String?> latestHitData = ValueNotifier(null);
 
-  BleFunctionality();
+  BleFunctionality(); //instantiate library
 
   ///get the needed permissions for ble functionality on android
   Future<bool> requestPermissions() async {
@@ -580,6 +681,7 @@ class BleFunctionality{
   ///connect to the selected ble status
   Future<void> connectDevice(DiscoveredDevice selectedDevice, void Function(bool) connectionStatus) async {
     //try connecting to the device
+    print("trying to connect to device");
     connection = flutterReactiveBle.connectToDevice(id: selectedDevice.id).listen((connectionState) {
       print("Connection State for device ${selectedDevice
           .name} : ${connectionState.connectionState}");
@@ -602,33 +704,108 @@ class BleFunctionality{
   }
 
   ///subscribe to characteristic with a connected device and necessary uuids
-  //TODO edit for use with other characteristics, likely make two other functions
-  void readLiveFromDevice({
+  void readScoreLiveFromDevice({
     required DiscoveredDevice connectedDevice,
-    required Uuid serviceUuid,
-    required Uuid characteristicUuid,
   }){
 
-    print("in readLiveFromDevice");
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final scoreCharUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495");
+
+    print("in readScoreLiveFromDevice");
     final characteristic = QualifiedCharacteristic(
-        characteristicId: characteristicUuid,
+        characteristicId: scoreCharUuid,
         serviceId: serviceUuid,
         deviceId: connectedDevice.id);
 
     flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
       final value = utf8.decode(data); //get decoded value
-      print("Received from BLE: $value");
-      latestData.value = value; //update latestData value
+      //print("Received from BLE: $value");
+      latestScoreData.value = value; //update latestData value
     }, onError: (error) {
-      latestData.value = null;
+      latestScoreData.value = null;
       print("Error subscribing to notifications: $error");
     });
   }
 
+  ///subscribe to swing characteristic
+  void readSwingLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+  }){
+
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final maxSwingCharUuid = Uuid.parse("8b2c1a45-7d3e-4f89-a2b1-c5d6e7f8a9b0");
+
+    print("in readSwingLiveFromDevice");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: maxSwingCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+      final value = utf8.decode(data); //get decoded value
+      // print("Received from BLE: $value");
+      latestSwingData.value = value; //update latestData value
+    }, onError: (error) {
+      latestSwingData.value = null;
+      print("Error subscribing to notifications: $error");
+    });
+  }
+
+  ///subscribe to hits characteristic
+  void readHitsLiveFromDevice({
+    required DiscoveredDevice connectedDevice,
+  }){
+
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final hitCharUuid = Uuid.parse("9c3d2b56-8e4f-5a90-b3c2-d6e7f8a9b0c1");
+
+    print("in readHitsLiveFromDevice");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: hitCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice.id);
+
+    flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+      final value = utf8.decode(data); //get decoded value
+      // print("Received from BLE: $value");
+      latestHitData.value = value; //update latestData value
+    }, onError: (error) {
+      latestHitData.value = null;
+      print("Error subscribing to notifications: $error");
+    });
+  }
+
+  ///write to the score characteristic to reset values
+  void writeReset() async{
+    final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
+    final scoreCharUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495");
+
+    print("in writeReset");
+    final characteristic = QualifiedCharacteristic(
+        characteristicId: scoreCharUuid,
+        serviceId: serviceUuid,
+        deviceId: connectedDevice!.id);
+
+    //convert the reset message into bytes to be sent
+    String resetMessage = "RESET";
+    List<int> resetInBytes = resetMessage.codeUnits;
+
+    await flutterReactiveBle.writeCharacteristicWithoutResponse(
+        characteristic,
+        value: resetInBytes
+    );
+
+  }
   ///stop scanning when leaving profile page
   void stopScan() {
     scanSubscription.cancel();
     print("Scan stopped");
+  }
+
+  ///disconnect function, broken
+  void disconnect(){
+    connection.cancel();
+    connectedDevice = null;
   }
 }
 
@@ -647,6 +824,36 @@ class Game {
   String gameType = "Standard";
   int startTime = 0;
 
+  int swingCount = 0;
+  int swingHits = 0;
+  double swingMax = 0;
+  int q1Hits = 0;
+  int q2Hits = 0;
+  int q3Hits = 0;
+  int q4Hits = 0;
+
+  ///update swing values when a new swing is detected
+  void newSwing(double swingSpeed){
+    swingCount+=1;
+    print("swing count $swingCount");
+
+    if(swingCount == 0 || swingSpeed > swingMax){
+      swingMax = swingSpeed;
+      print("new max speed: $swingMax");
+    }
+  }
+
+  ///update hit values when a new hit is received
+  void newHit(int q1, int q2, int q3, int q4){
+    print("new hit");
+    swingHits += 1;
+
+    q1Hits = q1;
+    q2Hits = q2;
+    q3Hits = q3;
+    q4Hits = q4;
+  }
+
   void incMyScore(){
     myScore += 1;
   }
@@ -664,6 +871,11 @@ class Game {
       return true;
     }
     else if(opponentScore >= 11 && myScore <= opponentScore - 2){
+      inProgress = false;
+      isFinished = true;
+      return true;
+    }
+    else if(opponentScore >= 15 || myScore >= 15){
       inProgress = false;
       isFinished = true;
       return true;
@@ -703,10 +915,18 @@ class Game {
     playingWithFriend = false;
     opponentName = "Opponent";
     winner = "";
+
+    swingCount = 0;
+    swingHits = 0;
+    swingMax = 0;
+    q1Hits = 0;
+    q2Hits = 0;
+    q3Hits = 0;
+    q4Hits = 0;
   }
 
   ///convert the String gameType to a int value
-  //TODO add other game types
+  //are going to keep one standard game
   int gameTypeToInt(){
     if (gameType == "Standard"){
       return 0;
@@ -721,131 +941,76 @@ class Game {
 
 ///class to check for network connection
 class ConnectivityCheck {
-  //only allow for one instance
+  // creates a singleton that can be accessed by all four pages
   static final ConnectivityCheck _instance = ConnectivityCheck._internal();
   factory ConnectivityCheck() => _instance;
-  ConnectivityCheck._internal(){
+  ConnectivityCheck._internal() {
     _init();
   }
 
-  //init library
-  final _connectivity = Connectivity();
+  //instantiate library
+  final Connectivity _connectivity = Connectivity();
+  //create a notifier for pages to see online status
   final ValueNotifier<bool> isOnline = ValueNotifier(true);
+  //track previous state to try
+  bool wasOffline = false;
+  //debounce timer to try to avoid flooding the database when reconnecting
+  Timer? debounceTimer;
 
-  ///get initial connection and double check
-  void _init() async{
+  //callback function for when connection is restored
+  VoidCallback? onReconnectCallback;
+
+  void _init() async {
     await _checkInitStatus();
 
-    _connectivity.onConnectivityChanged.listen((result){
+    //listen to see if connectivity status has changed
+    _connectivity.onConnectivityChanged.listen((result) {
       final online = !result.contains(ConnectivityResult.none);
       isOnline.value = online;
-    });
 
+      //if connection is restored after being online called reconnect handler
+      if (online && wasOffline) {
+        triggerOnReconnect();
+      }
+
+      //reset state
+      wasOffline = !online;
+    });
   }
 
-  ///get initial connection status
   Future<void> _checkInitStatus() async {
     final result = await _connectivity.checkConnectivity();
     final online = !result.contains(ConnectivityResult.none);
     isOnline.value = online;
-    print('Initial connectivity: $result');
+    wasOffline = !online;
 
-    // Delay the print to ensure ValueNotifier has processed the change
+    print('Initial connectivity: $result');
+    //again to avoid rapid tasks, try waiting
     Future.microtask(() {
       print('isOnline after update: ${isOnline.value}');
     });
   }
 
-  ///listen for a restored connection, then send previously cached data to database
-  void connectionRestoreListener(VoidCallback sendCachedData){
-    //check previous connection state
-    bool wasOffline = !isOnline.value;
+  ///keep from sending reconnection requests too quickly when connection is being turned on and off
+  void triggerOnReconnect() {
+    //check if timer value is null, also if its running cancel it
+    if (debounceTimer?.isActive ?? false) debounceTimer?.cancel();
 
-    isOnline.addListener(() {
-      //connection was restored
-      if (isOnline.value && wasOffline){
-        sendCachedData();
+    //wait for two seconds for signal to stabilize and call callback (send cached data)
+    debounceTimer = Timer(const Duration(seconds: 2), () {
+      if (onReconnectCallback != null) {
+        print("connection restored. sending cached games");
+        onReconnectCallback!();
       }
-      //reset value
-      wasOffline = !isOnline.value;
     });
+  }
 
+  ///called once to listen for restored connections and send cached data
+  void connectionRestoreListener(VoidCallback sendCachedData) {
+    onReconnectCallback = sendCachedData;
   }
 }
 
-///widget for logging in
-///TODO Rename
-class MyTextEntryWidget extends StatefulWidget {
-  @override
-  _MyTextEntryWidgetState createState() => _MyTextEntryWidgetState();
-}
-
-class _MyTextEntryWidgetState extends State<MyTextEntryWidget> {
-  //controller variables describing the text entries
-  final TextEditingController _controller1 = TextEditingController();
-  final TextEditingController _controller2 = TextEditingController();
-
-  //TODO add back create user on login page
-  _createNewUser(String userName, String password) {
-    // final newUser = User(
-    //   username: newName,
-    //   gamesPlayed: 0,
-    //   gamesWon: 0,
-    //   avgScore: 0
-    // );
-
-    // usersList.add(newUser);
-
-    api.postNewUserRequest(userName, password);
-  }
-
-  ///check for valid username and password with database then go to home
-  _login(String userName, String password) async {
-    String apiKey = await api.authorizeLogin(userName, password);
-
-    print("LOGIN UN: $userName");
-
-    if(apiKey != ""){
-      Provider.of<User>(context, listen: false).updateUserfromDatabase(userName);
-      Navigator.pushReplacementNamed(context, '/home');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          TextField(
-            controller: _controller1, //username entry is controlled by controller1
-            decoration: InputDecoration(
-              labelText: 'Enter username',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          SizedBox(
-            height: 16,
-          ),
-          TextField(
-            controller: _controller2, //password is controlled by controller2
-            decoration: InputDecoration(
-              labelText: 'Enter password',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: (){
-              _login(_controller1.text, _controller2.text);
-            },
-            child: const Text('Login'),
-          )
-        ],
-      ),
-    );
-  }
-}
 
 ///Top level widget
 class MyApp extends StatefulWidget {
@@ -967,7 +1132,11 @@ class _GamePageState extends State<GamePage> {
   var game = Game();
   bool isLoading = true;
   final internetConnection = ConnectivityCheck(); //check for internet connection
-  late VoidCallback _bleDataListener; //function for receiving new data from ble
+  late VoidCallback _bleDataListener; //function for receiving score data from ble
+  late VoidCallback _bleSwingSpeedListener; //receive swing speed data from ble
+  late VoidCallback _bleHitListener; //receive hit data from ble
+  bool isSendingGames = false;
+  static bool connectionListenerAdded = false; //avoid sending multiple times
 
   ///check if the user has inputted an opponent and update game
   void loadOpponent(){
@@ -1007,7 +1176,7 @@ class _GamePageState extends State<GamePage> {
     print("game started");
   }
 
-  ///check internet connection to show and how game will be saved
+  ///check internet connection to show winner and how game will be saved
   String showWinnerContent(String winnerName) {
     if(internetConnection.isOnline.value == true){
       return "$winnerName is the winner!";
@@ -1036,6 +1205,7 @@ class _GamePageState extends State<GamePage> {
     );
   }
 
+  ///increase my score in game and check for winner
   void incMyScore(){
     setState(() {
       game.incMyScore();
@@ -1048,6 +1218,7 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  ///increase opponent score in game and check for winner
   void incOppScore(){
     setState(() {
       game.incOppScore();
@@ -1061,14 +1232,23 @@ class _GamePageState extends State<GamePage> {
   }
 
   ///save finished game data to Hive box
-  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints) async {
+  Future<void> cacheGame(int startTime, int gameTypeNum, String winnerName, String loserName, int winnerPoints, int loserPoints, String un, int swingCount, int swingHits, double swingMax, int q1, int q2, int q3, int q4) async {
+
     Map<String, dynamic> gameToSave = {
       'timestamp': startTime,
       'game_type': gameTypeNum,
       'winner_name': winnerName,
       'loser_name': loserName,
       'winner_points': winnerPoints,
-      'loser_points': loserPoints
+      'loser_points': loserPoints,
+      'username': un,
+      'swing_count': swingCount,
+      'swing_hits': swingHits,
+      'swing_max': swingMax,
+      'Q1_hits': q1,
+      'Q2_hits': q2,
+      'Q3_hits': q3,
+      'Q4_hits': q4
     };
 
     final cacheBox = await Hive.openBox("gameQueue");
@@ -1077,19 +1257,62 @@ class _GamePageState extends State<GamePage> {
   }
 
   ///open the Hive box and register each game in the queue to the database
-  void sendCachedGames() async {
+  Future<void> sendCachedGames() async {
+    //check for game being sent repeatedly
+    if (isSendingGames) {
+      print("already sending cached games. skipping duplicate");
+      return;
+    }
+
+    isSendingGames = true;
+
     final cacheBox = await Hive.openBox("gameQueue");
     final cacheBoxKeys = cacheBox.keys.toList();
+    print("Game queue length: ${cacheBoxKeys.length}");
 
-    for(final key in cacheBoxKeys){
-      final gameData = cacheBox.get(key);
-      print(gameData);
-      api.registerGame(gameData['timestamp'], gameData['game_type'], gameData['winner_name'], gameData['loser_name'], gameData['winner_points'], gameData['loser_points']);
+    for (final key in cacheBoxKeys) {
+      try {
+        final gameData = await cacheBox.get(key);
+        print("Game data at key $key: $gameData");
+        if (gameData == null) continue;
+
+        final gameIdMap = await api.registerGame(
+          gameData['timestamp'],
+          gameData['game_type'],
+          gameData['winner_name'],
+          gameData['loser_name'],
+          gameData['winner_points'],
+          gameData['loser_points'],
+        );
+
+        final gameID = gameIdMap['game_id'];
+        await Future.delayed(Duration(milliseconds: 500)); //try delaying api calls to not overload database on reconnect
+        await api.registerStats(
+          gameData['username'],
+          gameID,
+          gameData['swing_count'],
+          gameData['swing_hits'],
+          gameData['swing_max'],
+          gameData['Q1_hits'],
+          gameData['Q2_hits'],
+          gameData['Q3_hits'],
+          gameData['Q4_hits'],
+        );
+
+        await cacheBox.delete(key); // delete successfully sent game
+      } catch (e) {
+        print("Error sending cached game at key $key: $e");
+      }
+      await Future.delayed(Duration(milliseconds: 500));//try delaying api calls to not overload database on reconnect
     }
+
+    isSendingGames = false;
+    await cacheBox.clear();//clear so unsent games don't pile up in box
   }
 
+
   ///format game info for saving, cache or register to database, reset game
-  void saveAndRestartGame(){
+  void saveAndRestartGame() async{
     int gameTypeNum = game.gameTypeToInt();
 
     String winnerName = "";
@@ -1097,12 +1320,6 @@ class _GamePageState extends State<GamePage> {
 
     int winnerPoints = -1;
     int loserPoints = -1;
-
-    //handle no registered opponent
-    if (game.opponentName == "Opponent"){
-      //eventually change to NULL user
-      game.opponentName = "testUser";
-    }
 
     if(game.getWinner() == "me"){
       winnerName = context.read<User>().username;
@@ -1120,11 +1337,17 @@ class _GamePageState extends State<GamePage> {
     }
 
     if(internetConnection.isOnline.value == true){
-      api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
-      print("Online. Sending game to database");
+      Map<String, dynamic> gameIdMap = await api.registerGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      int gameID = gameIdMap['game_id'];
+      String un = context.read<User>().username;
+      api.registerStats(un, gameID, game.swingCount, game.swingHits, game.swingMax, game.q1Hits, game.q2Hits, game.q3Hits, game.q4Hits);
+      myBLE.writeReset();
+      print("Online. Sending game to database $un");
     }
     else{
-      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints);
+      //try just turning off wifi instead of full airplane mode
+      myBLE.writeReset();
+      cacheGame(game.startTime, gameTypeNum, winnerName, loserName, winnerPoints, loserPoints, context.read<User>().username, game.swingCount, game.swingHits, game.swingMax, game.q1Hits, game.q2Hits, game.q3Hits, game.q4Hits);
       print("Offline. Caching game data");
     }
 
@@ -1136,11 +1359,21 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
+  ///reset game from ui
+  void _reset(){
+    context.read<User>().setOpponent("");
+    myBLE.writeReset();
+    setState(() {
+      game.resetGame();
+    });
+  }
 
   ///handle exiting page
   @override
   void dispose() {
-    myBLE.latestData.removeListener(_bleDataListener);
+    myBLE.latestScoreData.removeListener(_bleDataListener);
+    myBLE.latestSwingData.removeListener(_bleSwingSpeedListener);
+    myBLE.latestHitData.removeListener(_bleHitListener);
     super.dispose();
   }
 
@@ -1151,30 +1384,134 @@ class _GamePageState extends State<GamePage> {
     loadOpponent(); //get opponent name
 
     print("init game page");
-    //listen for a new ble data value, update game and ui
+    ///listen for new button info from paddle
+    int prevMyButtonScore = 0;
+    int prevOppButtonScore = 0;
     _bleDataListener = () {
       if (!mounted) return;
-      final data = myBLE.latestData.value;
-      if (data != null) {
-        setState(() {
-          print("New data in GamePage: $data");
-          game.myScore = int.tryParse(data.trim()) ?? 0;
-        });
-      } else {
-        setState(() {
-          game.myScore = -1;
-        });
+      final data = myBLE.latestScoreData.value;
+      if (data != null) { //new data has been received and a game has been started
+        //parse for score data
+        int comma1Idx = data.indexOf(',');
+        int comma2Idx = data.lastIndexOf(',');
+        int length = data.length;
+        String myButtonScoreChar = data.substring(0, comma1Idx);
+        print("my score char $myButtonScoreChar");
+        String oppButtonScoreChar = data.substring(comma1Idx + 1, comma2Idx);
+        print("opp score char $oppButtonScoreChar");
+        String startButtonPressChar = data.substring(comma2Idx + 1, length);
+        int myButtonScore = 0;
+        int oppButtonScore = 0;
+        int startButtonPress = 0;
+        try{
+          myButtonScore = int.parse(myButtonScoreChar);
+        }catch(e){
+          print("error converting my button score to int $e");
+        }
+        try{
+          oppButtonScore = int.parse(oppButtonScoreChar);
+        }catch(e){
+          print("error converting opp button score to int $e");
+        }
+        try{
+          startButtonPress = int.parse(startButtonPressChar);
+        }catch(e){
+          print("error converting start button press to int $e");
+        }
+
+        if(game.inProgress){
+          print("Game in progress: ${game.inProgress}");
+          if(myButtonScore != prevMyButtonScore){ //my score has changed so increment
+            setState(() {
+              print("New data in GamePage: $data");
+              incMyScore();
+              print("My score: ${game.myScore}");
+            });
+            prevMyButtonScore = myButtonScore;
+          }
+          if(oppButtonScore != prevOppButtonScore){ //opponent score has changed so increment
+            setState(() {
+              print("New data in GamePage: $data");
+              incOppScore();
+              print("Opponent score: ${game.opponentScore}");
+            });
+            prevOppButtonScore = oppButtonScore;
+          }
+
+        }
+        else{ //start game with button press
+          if(startButtonPress == 1){
+            startStandardGame();
+          }
+        }
       }
     };
 
     //use the listener function to handle new ble data
-    myBLE.latestData.addListener(_bleDataListener);
+    myBLE.latestScoreData.addListener(_bleDataListener);
 
+    ///listen for new swing speed data from paddle
+    _bleSwingSpeedListener = () {
+      if (!mounted) return; //check widgets
+      final data = myBLE.latestSwingData.value;
+      if (data != null) { //new data has been received and a game has been started
+        if (game.inProgress) {
+          print("Game in progress: ${game.inProgress}");
+          setState(() {
+            print("New data in GamePage: $data");
+            try {
+              //convert received string to double
+              String dataNumbersParse = data.replaceAll(" m/s", "");
+              double dataNum = double.parse(dataNumbersParse);
+              game.newSwing(dataNum);
+            } catch (e) {
+              print("error converting swing data to double: $e");
+            }
+          });
+        } else {
+          print("swing will not count until game is started");
+        }
+      }
+    };
+
+    myBLE.latestSwingData.addListener(_bleSwingSpeedListener);
+
+    int tempQ1 = 0;
+    int tempQ2 = 0;
+    int tempQ3 = 0;
+    int tempQ4 = 0;
+
+    ///listen for new hit data
+    _bleHitListener = () {
+      if (!mounted) return;
+      final data = myBLE.latestHitData.value;
+      if (data != null) { //new data has been received and a game has been started
+        if (game.inProgress) {
+          print("Hit data: $data");
+          //split the comma separated data
+          List<String> parts = data.split(',');
+          List<int> hits = parts.map(int.parse).toList(); //get the integers and put into list
+
+          print("Hits: $hits");
+
+          setState(() {
+            game.newHit(hits[0], hits[1], hits[2], hits[3]);
+          });
+        } else {
+          print("hit will not count until game is started");
+        }
+      }
+    };
+
+    myBLE.latestHitData.addListener(_bleHitListener);
     //when internet connection is restored, immediately send cached games to database
-    internetConnection.connectionRestoreListener((){
-      print("Internet connection restored. Sending cached games");
-      sendCachedGames();
-    });
+    if (!connectionListenerAdded) {
+      internetConnection.connectionRestoreListener(() {
+        print("Internet connection restored. Sending cached games");
+        sendCachedGames();
+      });
+      connectionListenerAdded = true;
+    }
 
   }
 
@@ -1205,11 +1542,13 @@ class _GamePageState extends State<GamePage> {
                     fontSize: 24
                 ),
               ),
-              SizedBox(width: 70,), //TODO fix spacing to handle long opponent names
-              Text(
-                game.opponentName,
-                style: TextStyle(
-                    fontSize: 24
+              SizedBox(width: 70,),
+              Flexible(
+                child: Text(
+                  game.opponentName,
+                  style: TextStyle(
+                      fontSize: 24
+                  ),
                 ),
               ),
             ],
@@ -1257,19 +1596,27 @@ class _GamePageState extends State<GamePage> {
               ),
             ],
           ),
-          Text("Game type: ${game.gameType}"),
+          SizedBox(height: 16),
+          Text("Swing Speed ${game.swingMax}"),
+          SizedBox(height: 16,),
+          Text("Hits - Q1: ${game.q1Hits} Q2: ${game.q2Hits} Q3: ${game.q3Hits} Q4: ${game.q4Hits}"),
+          SizedBox(height: 16,),
           ElevatedButton(
-              onPressed: startStandardGame,
-              child: Text("Start Game")
-          ),
-          ElevatedButton(
-              onPressed: incMyScore,
-              child: Text("Inc my score")
-          ),
-          ElevatedButton(
-              onPressed: incOppScore,
-              child: Text("Inc opp score")
-          ),
+              onPressed: _reset,
+              child: Text("Reset Game"))
+          // Text("Game type: ${game.gameType}"),
+          // ElevatedButton(
+          //     onPressed: startStandardGame,
+          //     child: Text("Start Game")
+          // ),
+          // ElevatedButton(
+          //     onPressed: incMyScore,
+          //     child: Text("Inc my score")
+          // ),
+          // ElevatedButton(
+          //     onPressed: incOppScore,
+          //     child: Text("Inc opp score")
+          // ),
         ],
       ),
     );
@@ -1296,13 +1643,39 @@ class _SocialPageState extends State<SocialPage> {
   void initState() {
     super.initState();
     //refresh user info
-    loadUser();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadUser();
+    });
+  }
+
+  ///handle friends when online or offline
+  Future<void> friendCaching() async {
+    final cacheBox = await Hive.openBox("friendQueue");
+    //when there's connection, save friends for later
+    if (internetConnection.isOnline.value) {
+      final friendsToSave = context.read<User>().pals;
+      print("Saving friends of type: ${friendsToSave.runtimeType}");
+      await cacheBox.put("latestFriends", friendsToSave);
+      print("Online: saved pals");
+    } else { //when there's not connection load saved friends
+      print("Offline: attempting to load cached friends");
+      if (cacheBox.containsKey("latestFriends")) {
+        final friendData = cacheBox.get("latestFriends");
+        print("Loaded cached friends: $friendData");
+        context.read<User>().setPals(friendData);
+      } else {
+        print("No cached friend data available");
+      }
+    }
   }
 
   ///refresh user everytime the page is built to keep friends updated
   Future<void> loadUser() async {
     final username = context.read<User>().username;
-    await context.read<User>().updateUserfromDatabase(username);
+    if(internetConnection.isOnline.value){
+      await context.read<User>().updateUserfromDatabase(username);
+    }
+    await friendCaching();
     setState(() {
       isLoading = false;
     });
@@ -1342,8 +1715,8 @@ class _SocialPageState extends State<SocialPage> {
 
   ///give a friend as an opponent and update user
   void startGameWithPal(String palName){
-      print("Start game with $palName");
-      context.read<User>().setOpponent(palName);
+    print("Start game with $palName");
+    context.read<User>().setOpponent(palName);
   }
 
   ///show a popup to start a game with a friend, delete a friend, or cancel
@@ -1368,11 +1741,11 @@ class _SocialPageState extends State<SocialPage> {
                   child: Text("Delete")
               ),
               TextButton(
-                  onPressed: () {
-                    startGameWithPal(palName);
-                    Navigator.of(context).pop();
-                  },
-                  child: Text("Start Game"),
+                onPressed: () {
+                  startGameWithPal(palName);
+                  Navigator.of(context).pop();
+                },
+                child: Text("Start Game"),
               )
             ],
           );
@@ -1426,12 +1799,12 @@ class _SocialPageState extends State<SocialPage> {
                       subtitle: Text("Winning %: ${pal['winRate'].toStringAsFixed(3)} Games Played: ${pal['gamesPlayed']}"),
                       onTap: () => showOptions(pal['username']), //show dialog with start game and delete options
                     );
-                }
+                  }
               ),
             )
           ],
         ),
-        ),
+      ),
     );
   }
 }
@@ -1446,7 +1819,7 @@ class HistoryPage extends StatefulWidget{
 
 class _HistoryPageState extends State<HistoryPage> {
   //options in dropdown
-  List<String> statsToView = ["Wins", "Losses", "Opponents", "Points Scored", "Swing Speeds", "Hit Locations"];
+  List<String> statsToView = ["Wins", "Losses", "Opponents", "Swing Speeds", "Hit Locations"];
   //option selected in dropdown
   String? selectedStat;
   //list of retrieved game ids
@@ -1472,7 +1845,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
     //save the game ids as a list of ints
     List<dynamic> gameIdDynamic = data['game_ids'] ?? [];
-    List<int> gameIdNums = gameIdDynamic.cast<int>();
+    List<int> gameIdNums = gameIdDynamic.cast<int>().reversed.toList();
 
     //check the widget is mounted before saving state
     if (mounted) {
@@ -1492,30 +1865,29 @@ class _HistoryPageState extends State<HistoryPage> {
       List<int> tempIds = gameIds ?? [];
       //loop through each game
       for (var game in tempIds){
-          //get the game information
-          Map<String, dynamic> gameMap = await api.getGameInfo(game);
-          print(gameMap);
-          String gameIdString = game.toString();
-          //use the winner id to find the username of the winner
-          var winnerId = gameMap[gameIdString]?["winner_id"];
-          Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
-          String winnerIdString =  winnerId.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
-          //check if the user is the winner
-          if (winnerName == username){
-            //the user is the winner so save id
-            tempWinIds.add(game);
-            //get the loser id and username
-            int loserID = gameMap[gameIdString]['loser_id'];
-            Map<String, dynamic> loserMap = await api.getUsername(loserID);
-            String loserIdString = loserID.toString();
-            String loserName = loserMap[loserIdString]['username'];
-            //change loser id locally to be better for ui
-            gameMap['loser_id'] = loserName;
-            //add date_time to format unix timestamp better for ui
-            gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
-            winsList.add(gameMap);
-          }
+        //get the game information
+        Map<String, dynamic> gameMap = await api.getGameInfo(game);
+        print(gameMap);
+        String gameIdString = game.toString();
+        //use the winner id to find the username of the winner
+        var winnerId = gameMap[gameIdString]?["winner_id"];
+        Map<String, dynamic> winnerMap = await api.getUsername(winnerId);
+        print("WINNER MAP: ${winnerMap}");
+        String winnerName = winnerMap[winnerId.toString()];
+        //check if the user is the winner
+        if (winnerName == username){
+          //the user is the winner so save id
+          tempWinIds.add(game);
+          //get the loser id and username
+          int loserID = gameMap[gameIdString]['loser_id'];
+          Map<String, dynamic> loserMap = await api.getUsername(loserID);
+          String loserName = loserMap[loserID.toString()];
+          //change loser id locally to be better for ui
+          gameMap['loser_id'] = loserName;
+          //add date_time to format unix timestamp better for ui
+          gameMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameMap[gameIdString]['timestamp'] * 1000);
+          winsList.add(gameMap);
+        }
       }
     }
     //set winIds
@@ -1540,7 +1912,7 @@ class _HistoryPageState extends State<HistoryPage> {
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString =  loserId.toString();
-        String loserName = loserMap[loserIdString]['username'];
+        String loserName = loserMap[loserIdString];
         //check if user is the loser
         if (loserName == username){
           //user is the loser so add game to list of loss ids
@@ -1549,7 +1921,7 @@ class _HistoryPageState extends State<HistoryPage> {
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
+          String winnerName = winnerMap[winnerIdString];
           //replace winner id with winner name locally to better suit ui
           gameMap['winner_id'] = winnerName;
           //add date_time to format unix timestamp better for ui
@@ -1579,14 +1951,14 @@ class _HistoryPageState extends State<HistoryPage> {
         var loserId = gameMap[gameIdString]?["loser_id"];
         Map<String, dynamic> loserMap = await api.getUsername(loserId);
         String loserIdString = loserId.toString();
-        String loserName = loserMap[loserIdString]['username'];
+        String loserName = loserMap[loserIdString];
         //user loses
         if (loserName == username) {
           //use winner id to get opponent name
           int winnerID = gameMap[gameIdString]['winner_id'];
           Map<String, dynamic> winnerMap = await api.getUsername(winnerID);
           String winnerIdString = winnerID.toString();
-          String winnerName = winnerMap[winnerIdString]['username'];
+          String winnerName = winnerMap[winnerIdString];
           //update game map to better display info
           gameMap['opponent_name'] = winnerName;
           gameMap['my_points'] =  gameMap[gameIdString]['loser_points'];
@@ -1610,8 +1982,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return opponentsMaps;
   }
 
-  //TODO finish stat history implementation
-  //similar layout to others, this function should be done, but needs tested
+  ///loop through each game to get swing info
   Future<List<Map<String, dynamic>>> getSwingSpeeds(String username) async {
     List<Map<String, dynamic>> swingsList = [];
 
@@ -1629,6 +2000,24 @@ class _HistoryPageState extends State<HistoryPage> {
     return swingsList;
   }
 
+  ///loop through each game to get hit info
+  Future<List<Map<String, dynamic>>> getHitLocations(String username) async {
+    List<Map<String, dynamic>> hitsList = [];
+
+    if (gameIds != null){
+      List<int> tempIds = gameIds ?? [];
+      for (var game in tempIds){
+        Map<String, dynamic> gameStatMap = await api.getGameStats(game, username);
+        Map<String, dynamic> gameInfoMap = await api.getGameInfo(game);
+        String gameIdString = game.toString();
+        gameStatMap['date_time'] = DateTime.fromMillisecondsSinceEpoch(gameInfoMap[gameIdString]['timestamp'] * 1000);
+        hitsList.add(gameStatMap);
+      }
+    }
+
+    return hitsList;
+  }
+
   ///display the list of wins
   Widget winsListWidget(List<Map<String, dynamic>> winsList) {
     print("in widget");
@@ -1636,15 +2025,15 @@ class _HistoryPageState extends State<HistoryPage> {
     return Container(
       color: Theme.of(context).cardColor,
       child: ListView.builder(
-        itemCount: winsList.length,
-        itemBuilder: (context, index) {
-          final win = winsList[index];
-          print(win);
-          return ListTile(
-            title: Text("${win['date_time']} Opponent: ${win['loser_id']}"),
-            subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
-          );
-        }
+          itemCount: winsList.length,
+          itemBuilder: (context, index) {
+            final win = winsList[index];
+            print(win);
+            return ListTile(
+              title: Text("${win['date_time']} Opponent: ${win['loser_id']}"),
+              subtitle: Text("Score: ${win[winIds?[index].toString()]['winner_points']} - ${win[winIds?[index].toString()]['loser_points']} Game Type: ${win[winIds?[index].toString()]['game_type']}"),
+            );
+          }
       ),
     );
   }
@@ -1696,8 +2085,25 @@ class _HistoryPageState extends State<HistoryPage> {
           itemBuilder: (context, index) {
             final swing = swingsList[index];
             return ListTile(
-              title: Text("${swing['date_time']} (unit)"),
-              subtitle: Text("Average: ${swing[gameIds?[index].toString()]['swing_avg']} Min: ${swing[gameIds?[index].toString()]['swing_min']} Max: ${swing[gameIds?[index].toString()]['swing_max']}"),
+              title: Text("${swing['date_time']}"),
+              subtitle: Text("Max Speed: ${swing[gameIds?[index].toString()]['swing_max']}m/s Swing Count: ${swing[gameIds?[index].toString()]['swing_count']}"),
+            );
+          }
+      ),
+    );
+  }
+
+  ///display the list of hits
+  Widget hitLocationWidget(List<Map<String, dynamic>> hitsList) {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: ListView.builder(
+          itemCount: hitsList.length,
+          itemBuilder: (context, index) {
+            final hit = hitsList[index];
+            return ListTile(
+              title: Text("${hit['date_time']} Hit %: ${hit[gameIds?[index].toString()]['hit_percentage']}"),
+              subtitle: Text("Q1: ${hit[gameIds?[index].toString()]['Q1_hits']} Q2: ${hit[gameIds?[index].toString()]['Q2_hits']} Q3: ${hit[gameIds?[index].toString()]['Q3_hits']} Q4: ${hit[gameIds?[index].toString()]['Q4_hits']}"),
             );
           }
       ),
@@ -1728,6 +2134,10 @@ class _HistoryPageState extends State<HistoryPage> {
       final swings = await getSwingSpeeds(username);
       return swings;
     }
+    else if(selectedStat == "Hit Locations"){
+      final hits = await getHitLocations(username);
+      return hits;
+    }
     else{
       print("can't get value: ${selectedStat}");
       return [];
@@ -1753,44 +2163,46 @@ class _HistoryPageState extends State<HistoryPage> {
                 }
             ),
             DropdownButton<String>(
-                hint: Text("Select a stat to view"),
-                value: selectedStat,
-                onChanged: (String? newValue){
-                  setState(() {
-                    selectedStat = newValue;
-                  });
-                },
-                items: statsToView.map((String value) {
-                  return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value)
-                  );
-                }).toList(),
+              hint: Text("Select a stat to view"),
+              value: selectedStat,
+              onChanged: (String? newValue){
+                setState(() {
+                  selectedStat = newValue;
+                });
+              },
+              items: statsToView.map((String value) {
+                return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value)
+                );
+              }).toList(),
             ),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _getSelectedHistory(context.read<User>().username),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) { //get selected data
-                      return CircularProgressIndicator();
-                    } else if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    } else { //display corresponding widget with loaded data
-                      final data = snapshot.data!;
-                      print(data);
-                      switch(selectedStat){
-                        case "Wins":
-                          return winsListWidget(data);
-                        case "Losses":
-                          return lossesListWidget(data);
-                        case "Opponents":
-                          return oppsListWidget(data);
-                        case "Swing Speeds":
-                          return swingSpeedWidget(data);
-                        default:
-                          return errorWidget();
-                      }
+                future: _getSelectedHistory(context.read<User>().username),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) { //get selected data
+                    return CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  } else { //display corresponding widget with loaded data
+                    final data = snapshot.data!;
+                    print(data);
+                    switch(selectedStat){
+                      case "Wins":
+                        return winsListWidget(data);
+                      case "Losses":
+                        return lossesListWidget(data);
+                      case "Opponents":
+                        return oppsListWidget(data);
+                      case "Swing Speeds":
+                        return swingSpeedWidget(data);
+                      case "Hit Locations":
+                        return hitLocationWidget(data);
+                      default:
+                        return errorWidget();
                     }
+                  }
                 },
               ),
             )
@@ -1802,7 +2214,6 @@ class _HistoryPageState extends State<HistoryPage> {
 }
 
 ///page where user logs in
-//TODO create user saving option, look at Michael's new code
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
 
@@ -1816,6 +2227,71 @@ class _LoginPageState extends State<LoginPage> {
   //corresponds to selection of checkbox where user can save login
   bool saveChecked = false;
 
+  final TextEditingController _controller1 = TextEditingController();
+  final TextEditingController _controller2 = TextEditingController();
+
+  ///save basic user info for future offline login
+  Future<void> cacheUser(String un, String pw) async {
+    final userToSave = {
+      'username': un.trim(),
+      'password': pw.trim(),
+    };
+
+    final cacheBox = await Hive.openBox("userQueue");
+    await cacheBox.put('cachedUser', userToSave); // use fixed key
+
+    print("User cached");
+  }
+
+  ///login offline by checking previously cached user
+  Future<void> getCachedUser(String enteredUn, String enteredPw) async {
+    final cacheBox = await Hive.openBox("userQueue");
+
+    final userData = cacheBox.get('cachedUser');
+
+    if (userData != null &&
+        enteredUn.trim() == userData['username'].trim() &&
+        enteredPw.trim() == userData['password'].trim()) {
+      print("Offline login approved");
+      context.read<User>().setCacheUser(userData['username']);
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      print("Offline login failed");
+    }
+  }
+
+
+  ///create new user and log them in
+  _createNewUser(String userName, String password) {
+
+    api.postNewUserRequest(userName, password);
+
+    _login(userName, password);
+  }
+
+  ///check for valid username and password with database then go to home
+  _login(String userName, String password) async {
+    //if online login through database
+    if(internetConnection.isOnline.value){
+      String apiKey = await api.authorizeLogin(userName, password);
+      api.apiToken =  apiKey;
+
+      print(apiKey);
+      print("LOGIN UN: $userName");
+
+      if(apiKey != ""){
+        Provider.of<User>(context, listen: false).updateUserfromDatabase(userName);
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    }
+    else{//if offline login with previously cached user
+      print("LOGIN UN: $userName");
+      getCachedUser(userName.trim(), password.trim());
+
+    }
+
+  }
+
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -1825,7 +2301,49 @@ class _LoginPageState extends State<LoginPage> {
       body: Center(
         child: Column(
           children: [
-            MyTextEntryWidget(), //widget holding text entries and button
+            SizedBox(height: 16,),
+            SizedBox(
+              width: 350,
+              child: TextField(
+                controller: _controller1, //username entry is controlled by controller1
+                decoration: InputDecoration(
+                  labelText: 'Enter username',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 16,
+            ),
+            SizedBox(
+              width: 350,
+              child: TextField(
+                controller: _controller2, //password is controlled by controller2
+                decoration: InputDecoration(
+                  labelText: 'Enter password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: (){
+                    _login(_controller1.text, _controller2.text);
+                  },
+                  child: Text('Login'),
+
+                ),
+                SizedBox(width: 16,),
+                ElevatedButton(
+                    onPressed: (){
+                      _createNewUser(_controller1.text, _controller2.text);
+                    },
+                    child: Text("Create New User")
+                )
+              ],
+            ), //widget holding text entries and button
             ValueListenableBuilder(
                 valueListenable: internetConnection.isOnline,
                 builder: (context, online, _){
@@ -1841,9 +2359,16 @@ class _LoginPageState extends State<LoginPage> {
                 Checkbox(
                     value: saveChecked,
                     onChanged: (bool ? newValue) {
-                      setState(() {
-                        saveChecked = newValue!;
-                      });
+                      if(newValue != null){
+                        setState(() {
+                          saveChecked = newValue;
+                        });
+
+                        if(newValue){
+                          cacheUser(_controller1.text, _controller2.text);
+                        }
+                      }
+
                     }
                 )
               ],
@@ -1868,8 +2393,6 @@ class _ProfilePageState extends State<ProfilePage> {
   //check internet connection
   final internetConnection = ConnectivityCheck();
   //ble service uuid
-  final serviceUuid = Uuid.parse("6c914f48-d292-4d61-a197-d4d5500b60cc");
-  final characteristicUuid = Uuid.parse("27923275-9745-4b89-b6b2-a59aa7533495"); //TODO change from temp to button press
 
   ///calls ble function to scan for discoverable ble devices
   void scan(){
@@ -1890,12 +2413,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
       //device is connected so begin subscription to characteristic
       if(status){
-        myBLE.readLiveFromDevice(
-          connectedDevice: device,
-          serviceUuid: serviceUuid,
-          characteristicUuid: characteristicUuid,
-        );
-
+        myBLE.readScoreLiveFromDevice(connectedDevice: device);
+        myBLE.readSwingLiveFromDevice(connectedDevice: device);
+        myBLE.readHitsLiveFromDevice(connectedDevice: device);
       }
       else{
         print("Ble connection failed");
@@ -1937,11 +2457,11 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           children: [
             ValueListenableBuilder(
-              valueListenable: internetConnection.isOnline,
-              builder: (context, online, _){
-                //only display message when offline
-                return online ? Text("") : Text("Offline");
-              }
+                valueListenable: internetConnection.isOnline,
+                builder: (context, online, _){
+                  //only display message when offline
+                  return online ? Text("") : Text("Offline");
+                }
             ),
             Container(
               width: 100,
@@ -1955,12 +2475,21 @@ class _ProfilePageState extends State<ProfilePage> {
                 "Hello, ${user.username}"
             ),
             SizedBox(height: 16,),
-            ElevatedButton( //reset user and return to login page on logout
-                onPressed: () {
-                  logout();
-                  Navigator.pushReplacementNamed(context, '/');
-                },
-                child: Text("Logout")
+            Row(
+              children: [
+                ElevatedButton( //reset user and return to login page on logout
+                    onPressed: () {
+                      logout();
+                      Navigator.pushReplacementNamed(context, '/');
+                    },
+                    child: Text("Logout")
+                ),
+                SizedBox(width: 16,),
+                // ElevatedButton(
+                //     onPressed: myBLE.disconnect,
+                //     child: Text("Disconnect device")
+                // )
+              ],
             ),
             Expanded(
               child: ListView.builder(
@@ -1968,6 +2497,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   itemBuilder: (context, index) {
                     final device = devices[index];
                     return ListTile(
+                      tileColor: device.id == myBLE.connectedDevice?.id
+                          ? Colors.green[100] // Connected device highlight color
+                          : null,
                       title: Text(device.name.isNotEmpty ? device.name : "Unnamed"),
                       subtitle: Text(device.id),
                       onTap: () => connect(device),
