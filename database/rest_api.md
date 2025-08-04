@@ -248,13 +248,11 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `game_id`: the game ID of the game
     - `swing_count`: number of swings user performed in the game
     - `swing_hits`: number of swings which hit the ball by user in the game
-    - `swing_min`: minimum swing speed
     - `swing_max`: maximum swing speed
-    - `swing_avg`: average swing speed
-    - `hit_modeX`: x coordinate of mode hit position
-    - `hit_modeY`: y coordinate of mode hit position
-    - `hit_avgX`: x coordinate of average hit position
-    - `hit_avgY`: y coordinate of average hit position
+    - `Q1_hits`: number of hits registered in the 1st quadrant
+    - `Q2_hits`: number of hits registered in the 2nd quadrant
+    - `Q3_hits`: number of hits registered in the 3rd quadrant
+    - `Q4_hits`: number of hits registered in the 4th quadrant
 
     **returns**:
     ```js
