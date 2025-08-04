@@ -6,25 +6,40 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     
 
 ## pickle/user
-- `pickle/user/get`
+- `pickle/user/getUsername`
     ---
-    Retrieves data about a specific user, specifically notated by user_id. By default, all accessible user data will be returned, but the `objects` parameter can be used to query for specific values.
+    Retrieves username(s) of user(s) with a given user ID(s).
 
     **params**:
-    - `user_id`: The user_id of the account(s) to query data from. May be passed as an int or a list of ints
-    - `values` *(optinoal)*: A list of values to query for each user. The following are recognized values: `username`, `gamesPlayed`, `gamesWon`, `averageScore`. By default, all supported values will be queried
+    - `user_id`: The user_id of the account(s) to query username. May be passed as an int or a list of ints
 
     **returns**: dictionary or list of dictionaries in the following format
     ```js
     {
-        "(user_id)": {"username":(username), "gamesPlayed":(gamesPlayed), "gamesWon":(gamesWon), "averageScore":(averageScore)},
+        "(user_id)": (username),
+        ...
+    }
+    ```
+    
+- `pickle/user/getStats`
+    ---
+    Retrieves user statistics of specific user(s), specifically notated by user_id. By default, all accessible user stats be returned, but the `stats` parameter can be used to query for specific values. The sender must have appropriate permissions to view these statistics (must be admin or have be friends).
+
+    **params**:
+    - `user_id`: The user_id of the account(s) to query data from. May be passed as an int or a list of ints
+    - `stats` *(optinoal)*: A list of statistics to query for each user. The following are recognized values: `gamesPlayed`, `gamesWon`, `averageScore`. By default, all supported values will be queried
+
+    **returns**: dictionary or list of dictionaries in the following format
+    ```js
+    {
+        "(user_id)": {"gamesPlayed":(gamesPlayed), "gamesWon":(gamesWon), "averageScore":(averageScore)},
         // OR
         "(user_id)": {"(value1_name)":(value1_val), ...},
         ...
     }
     ```
 
-- `pickle/user/set`
+- `pickle/user/setUsername`
     ---
     Used to modify user data, such as username. For each value to modify, include a parameter of that value's name and its new value.
 
@@ -233,13 +248,11 @@ The PickleConnect database system is based on a RESTful API, which allows the an
     - `game_id`: the game ID of the game
     - `swing_count`: number of swings user performed in the game
     - `swing_hits`: number of swings which hit the ball by user in the game
-    - `swing_min`: minimum swing speed
     - `swing_max`: maximum swing speed
-    - `swing_avg`: average swing speed
-    - `hit_modeX`: x coordinate of mode hit position
-    - `hit_modeY`: y coordinate of mode hit position
-    - `hit_avgX`: x coordinate of average hit position
-    - `hit_avgY`: y coordinate of average hit position
+    - `Q1_hits`: number of hits registered in the 1st quadrant
+    - `Q2_hits`: number of hits registered in the 2nd quadrant
+    - `Q3_hits`: number of hits registered in the 3rd quadrant
+    - `Q4_hits`: number of hits registered in the 4th quadrant
 
     **returns**:
     ```js

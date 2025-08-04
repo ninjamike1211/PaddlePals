@@ -1,6 +1,5 @@
 import pytest
 import requests
-import json
 
 from database import database_setup
 from database import database_server
@@ -12,10 +11,6 @@ def setup_server(tmp_path, users=None, auth=True):
     api = restAPI(db_path, useAuth=auth)
     return database_server.PickleServer(api, 8080)
 
-def convert_response(response:requests.Response):
-    response_str = response.content.decode('utf-8')
-    return json.loads(response_str)
-
 
 def test_login_root(tmp_path):
     with setup_server(tmp_path):
@@ -26,9 +21,8 @@ def test_login_root(tmp_path):
         # Attempt login with correct password
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'admin', 'password':'root'})
         assert response.status_code == 200
-        response_dict = convert_response(response)
-        assert response_dict['apiKey']
-        assert response_dict['renewalKey']
+        assert 'apiKey' in response.json()
+        assert 'renewalKey' in response.json()
 
 def test_create_user(tmp_path):
     with setup_server(tmp_path):
@@ -58,9 +52,8 @@ def test_create_user(tmp_path):
 
         # Authenticate user
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'testUser', 'password':'9*GTfRWQqjFFGcJS8pcK$O!M'})
-        response_dict = convert_response(response)
-        assert response_dict['apiKey']
-        assert response_dict['renewalKey']
+        assert 'apiKey' in response.json()
+        assert 'renewalKey' in response.json()
 
         # Attempt to create duplicate user
         response = requests.post("http://localhost:8080/pickle/user/create", json={'username':'testUser', 'password':'qUzu0pes^hs0b1EhRmfZdve5'})
@@ -71,33 +64,33 @@ def test_friends(tmp_path):
         # log in with userA
         response = requests.post("http://localhost:8080/pickle/user/auth", json={'username':'userA', 'password':'test_pass101A'})
         assert response.status_code == 200
-        apiKey = convert_response(response)['apiKey']
+        apiKey = response.json()['apiKey']
 
         # Verify userA can't access users B/C
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userB'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userC'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':3}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
 
         # Verify no friends
         response = requests.post("http://localhost:8080/pickle/user/friends", json={'user_id':1}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
-        assert convert_response(response) == {}
+        assert response.json() == {}
 
         # Befriend userB
         response = requests.post("http://localhost:8080/pickle/user/addFriend", json={'user_id':1, 'friend_username':'userB'}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
         response = requests.post("http://localhost:8080/pickle/user/friends", json={'user_id':1}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
-        assert convert_response(response) == {'2':{'username':'userB', 'gamesPlayed':0, 'winRate':None}}
+        assert response.json() == {'2':{'username':'userB', 'gamesPlayed':0, 'winRate':None}}
 
         # Check that we can access userB
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':2, 'objects':['username']}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2, 'objects':['username']}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
-        assert convert_response(response) == {'2':{'username':'userB'}}
+        assert '2' in response.json()
 
         # Check that we still can't access userC
-        response = requests.post("http://localhost:8080/pickle/user/get", json={'user_id':3, 'objects':['username']}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':3, 'objects':['username']}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
 
         # Befriend userC
@@ -105,17 +98,17 @@ def test_friends(tmp_path):
         assert response.status_code == 200
         response = requests.post("http://localhost:8080/pickle/user/friends", json={'user_id':1}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
-        assert convert_response(response) == {'2':{'username':'userB', 'gamesPlayed':0, 'winRate':None}, '3':{'username':'userC', 'gamesPlayed':0, 'winRate':None}}
+        assert response.json() == {'2':{'username':'userB', 'gamesPlayed':0, 'winRate':None}, '3':{'username':'userC', 'gamesPlayed':0, 'winRate':None}}
 
         # Remove userB
         response = requests.post("http://localhost:8080/pickle/user/removeFriend", json={'user_id':1, 'friend_id':2}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
         response = requests.post("http://localhost:8080/pickle/user/friends", json={'user_id':1}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 200
-        assert convert_response(response) == {'3':{'username':'userC', 'gamesPlayed':0, 'winRate':None}}
+        assert response.json() == {'3':{'username':'userC', 'gamesPlayed':0, 'winRate':None}}
 
         # Verify we can no longer access userB
-        response = requests.post("http://localhost:8080/pickle/user/id", json={'username':'userB'}, headers={'Authorization':f'Bearer {apiKey}'})
+        response = requests.post("http://localhost:8080/pickle/user/getStats", json={'user_id':2}, headers={'Authorization':f'Bearer {apiKey}'})
         assert response.status_code == 403
         
 
